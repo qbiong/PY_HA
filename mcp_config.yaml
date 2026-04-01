@@ -1,0 +1,121 @@
+# py_ha MCP Server Configuration
+#
+# 将此配置添加到 Claude Code 或其他 MCP 客户端的配置文件中
+#
+# Claude Code 配置位置:
+# - macOS/Linux: ~/.claude/claude_desktop_config.json
+# - Windows: %APPDATA%\Claude\claude_desktop_config.json
+#
+# 配置示例:
+# {
+#   "mcpServers": {
+#     "py_ha": {
+#       "command": "python",
+#       "args": ["-m", "py_ha.mcp.server"],
+#       "env": {}
+#     }
+#   }
+# }
+#
+# 或者使用安装后的命令:
+# {
+#   "mcpServers": {
+#     "py_ha": {
+#       "command": "py-ha-mcp",
+#       "args": [],
+#       "env": {}
+#     }
+#   }
+# }
+
+$schema: https://github.com/modelcontextprotocol/spec/blob/main/schema/schema.json
+serverInfo:
+  name: py_ha
+  version: 0.1.0
+  description: JVM-style Memory Management & OS-style Task Scheduling for AI Agents
+
+capabilities:
+  tools: true
+  resources: false
+  prompts: false
+
+tools:
+  # Memory Management Tools
+  - name: memory_store
+    description: 存储内容到记忆系统（JVM风格分代存储）
+    category: memory
+
+  - name: memory_store_knowledge
+    description: 存储重要知识到Permanent区（永不回收）
+    category: memory
+
+  - name: memory_gc
+    description: 触发垃圾回收清理记忆
+    category: memory
+
+  - name: memory_status
+    description: 获取记忆系统状态报告
+    category: memory
+
+  - name: memory_health
+    description: 获取记忆系统健康报告
+    category: memory
+
+  - name: memory_optimize
+    description: 自动优化记忆系统
+    category: memory
+
+  # Task Management Tools
+  - name: task_create
+    description: 创建新任务
+    category: task
+
+  - name: task_create_chain
+    description: 创建任务链（顺序执行）
+    category: task
+
+  - name: task_create_parallel
+    description: 创建并行任务
+    category: task
+
+  - name: task_schedule
+    description: 调度执行任务
+    category: task
+
+  - name: task_complete
+    description: 标记任务完成
+    category: task
+
+  - name: task_status
+    description: 查询任务状态
+    category: task
+
+  - name: task_list
+    description: 列出所有任务
+    category: task
+
+  # Storage Tools
+  - name: storage_save
+    description: 保存数据到存储系统
+    category: storage
+
+  - name: storage_load
+    description: 从存储系统加载数据
+    category: storage
+
+  - name: storage_save_knowledge
+    description: 保存知识到知识库
+    category: storage
+
+  - name: storage_search_knowledge
+    description: 搜索知识库
+    category: storage
+
+  # System Tools
+  - name: system_status
+    description: 获取整体系统状态
+    category: system
+
+  - name: system_health
+    description: 获取整体健康报告
+    category: system

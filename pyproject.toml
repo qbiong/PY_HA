@@ -1,0 +1,90 @@
+[project]
+name = "py-ha"
+version = "0.2.0"
+description = "Python Harness for AI Agents - A Harness Engineering Framework with Role-Driven Collaboration"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+    { name = "py_ha Team", email = "team@py-ha.dev" }
+]
+keywords = [
+    "ai", "agent", "harness", "llm", "framework",
+    "jvm", "memory-management", "workflow", "mcp",
+    "claude", "developer-tools", "automation"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "pydantic>=2.0.0",
+    "typing-extensions>=4.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+    "build>=1.0.0",
+    "twine>=5.0.0",
+]
+llm = [
+    "openai>=1.0.0",
+    "anthropic>=0.18.0",
+]
+mcp = [
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+py-ha = "py_ha.cli:main"
+py-ha-mcp = "py_ha.mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/py-ha/py-ha"
+Documentation = "https://github.com/py-ha/py-ha#readme"
+Repository = "https://github.com/py-ha/py-ha"
+Issues = "https://github.com/py-ha/py-ha/issues"
+Changelog = "https://github.com/py-ha/py-ha/blob/main/CHANGELOG.md"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/py_ha"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.md",
+    "/LICENSE",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
