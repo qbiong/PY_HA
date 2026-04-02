@@ -74,6 +74,36 @@ pip install -e ".[dev]"
 
 ## 快速开始
 
+### AI 对话自动记录（核心功能）
+
+AI 只需调用一个方法，自动识别内容类型并持久化到对应文档：
+
+```python
+from py_ha import Harness
+
+harness = Harness("项目名", persistent=True)
+harness.setup_team()
+
+# 智能识别并自动记录
+harness.record("用户需要一个登录功能")    # → requirements.md
+harness.record("发现登录页面验证码异常")  # → testing.md
+harness.record("已完成登录模块开发")      # → progress.md
+harness.record("正在实现用户认证逻辑")    # → development.md
+
+# chat() 方法默认自动记录
+harness.chat("我需要添加一个搜索功能")    # 用户消息自动记录
+harness.chat("好的，我来实现", role="assistant")  # AI回复自动记录
+```
+
+**自动识别规则**：
+
+| 优先级 | 关键词 | 记录位置 |
+|--------|--------|----------|
+| 1（最高）| 完成、已、进度、状态、更新、通过、成功 | progress.md |
+| 2 | bug、问题、错误、异常、失败、修复 | testing.md |
+| 3 | 需求、功能、需要、添加、新增、设计 | requirements.md |
+| 4（默认）| 实现、开发、编写、修改、优化 | development.md |
+
 ### 一行代码开发功能
 
 ```python
@@ -393,7 +423,21 @@ py_ha/
 
 ## 更新日志
 
-### v0.3.0 (当前版本)
+### v0.3.1 (当前版本)
+
+**新增：AI 对话智能自动记录**
+
+- `record()` 方法：智能识别内容类型并自动持久化到对应文档
+- `chat()` 方法增强：默认自动调用 `record()` 记录对话内容
+- 便捷方法：`record_requirement()`、`record_bug()`、`record_progress()`
+- 关键词优先级匹配：进度 > Bug > 需求 > 开发
+
+**解决问题**：
+- AI 对话时无需显式调用文档管理方法
+- 不同对话框可以维护同一份项目文件
+- 所有操作自动持久化到 `.py_ha/documents/` 目录
+
+### v0.3.0
 
 **架构重构：精简核心，消除冗余**
 
