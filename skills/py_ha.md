@@ -2,6 +2,36 @@
 
 py_ha 是一个 Harness Engineering 框架，将软件工程团队最佳实践引入 AI Agent 开发。
 
+## AI 对话自动记录（核心功能）
+
+**AI 只需调用一个方法，自动完成持久化：**
+
+```python
+from py_ha import Harness
+
+harness = Harness("项目名", persistent=True)
+harness.setup_team()
+
+# AI 对话时自动记录（智能识别内容类型）
+harness.record("用户需要一个登录功能")       # → requirements.md
+harness.record("发现登录页面验证码异常")      # → testing.md
+harness.record("已完成登录模块开发")          # → progress.md
+harness.record("正在实现用户认证逻辑")        # → development.md
+
+# chat() 方法默认自动记录
+harness.chat("我需要添加一个搜索功能")        # 用户消息自动记录
+harness.chat("好的，我来实现搜索模块", role="assistant")  # AI回复自动记录
+```
+
+### 自动识别规则
+
+| 关键词 | 记录位置 | 示例 |
+|--------|----------|------|
+| 需求、功能、需要、添加、新增、实现 | requirements.md | "用户需要一个登录功能" |
+| bug、问题、错误、异常、失败、修复 | testing.md | "发现支付接口超时问题" |
+| 完成、已、进度、状态、更新 | progress.md | "已完成登录模块开发" |
+| 其他内容 | development.md | "正在优化数据库查询" |
+
 ## 快速开始
 
 ### 开发功能
@@ -11,26 +41,30 @@ from py_ha import Harness
 
 harness = Harness("项目名")
 harness.setup_team()
-harness.develop("功能描述")  # 一键开发
+harness.develop("功能描述")  # 一键开发（自动记录）
 ```
 
 ### 修复 Bug
 
 ```python
-harness.fix_bug("Bug 描述")  # 一键修复
+harness.fix_bug("Bug 描述")  # 一键修复（自动记录）
 ```
 
 ## 核心功能速查
 
-| 操作 | 命令 |
-|------|------|
-| 开发功能 | `harness.develop("描述")` |
-| 修复 Bug | `harness.fix_bug("描述")` |
-| 需求分析 | `harness.analyze("需求")` |
-| 架构设计 | `harness.design("描述")` |
-| 存储记忆 | `harness.remember("key", "value", important=True)` |
-| 回忆信息 | `harness.recall("key")` |
-| 项目状态 | `harness.get_status()` |
+| 操作 | 命令 | 自动记录 |
+|------|------|----------|
+| 智能记录 | `harness.record("内容")` | ✓ 智能识别类型 |
+| 用户对话 | `harness.chat("消息")` | ✓ 默认自动记录 |
+| AI回复 | `harness.chat("回复", role="assistant")` | ✓ 默认自动记录 |
+| 开发功能 | `harness.develop("描述")` | ✓ 需求+开发日志 |
+| 修复Bug | `harness.fix_bug("描述")` | ✓ Bug报告+修复日志 |
+| 显式需求 | `harness.record_requirement("内容", "P1")` | ✓ 带优先级 |
+| 显式Bug | `harness.record_bug("描述", "high")` | ✓ 带严重程度 |
+| 显式进度 | `harness.record_progress("状态")` | ✓ 进度更新 |
+| 存储记忆 | `harness.remember("key", "value", important=True)` | ✓ 重要知识 |
+| 回忆信息 | `harness.recall("key")` | - |
+| 项目状态 | `harness.get_status()` | - |
 
 ## 角色系统
 

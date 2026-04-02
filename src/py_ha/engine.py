@@ -642,7 +642,132 @@ class Harness:
         # 再从记忆获取
         return self.memory.get_knowledge(key)
 
-    # ==================== 需求与任务管理 ====================
+    # ==================== 智能记录（核心方法） ====================
+
+    def record(self, content: str, context: str = "") -> bool:
+        """
+        智能记录内容到项目文档（自动识别类型）
+
+        AI 对话时只需调用此方法，系统自动判断内容类型并持久化到对应文档。
+
+        自动识别规则：
+        - 需求类关键词（"需求"、"功能"、"需要"、"要"、"添加"、"新增"）
+          → requirements.md
+        - Bug类关键词（"bug"、"问题"、"错误"、"异常"、"失败"、"修复"）
+          → testing.md
+        - 进度类关键词（"完成"、"已"、"进度"、"状态"、"更新"）
+          → progress.md
+        - 其他内容 → development.md（开发日志）
+
+        Args:
+            content: 要记录的内容
+            context: 可选的上下文信息（如 "用户说"、"AI分析"）
+
+        Returns:
+            是否成功记录
+
+        Examples:
+            # AI 自动记录用户需求
+            harness.record("用户需要一个登录功能")
+
+            # AI 记录分析结果
+            harness.record("已完成登录模块开发", context="AI汇报")
+
+            # AI 记录 Bug 信息
+            harness.record("发现登录页面验证码显示异常")
+        """
+        if not self.project_state:
+            return False
+
+        # 关键词分类（优先级：进度 > Bug > 需求，因为需求关键词最宽泛）
+        # 需求关键词：明确的需求表述
+        requirement_keywords = ["需求", "功能", "需要", "要", "添加", "新增", "设计"]
+        # Bug关键词：问题相关
+        bug_keywords = ["bug", "问题", "错误", "异常", "失败", "修复", "fix", "报错", "崩溃"]
+        # 进度关键词：状态更新（优先级最高）
+        progress_keywords = ["完成", "已", "进度", "状态", "更新", "通过", "成功"]
+        # 开发关键词：开发过程中的动作
+        development_keywords = ["实现", "开发", "编写", "修改", "优化", "重构"]
+
+        # 判断内容类型（按优先级匹配）
+        content_lower = content.lower()
+        doc_type = DocumentType.DEVELOPMENT  # 默认开发日志
+
+        # 先匹配进度（最高优先级）
+        if any(kw in content_lower for kw in progress_keywords):
+            doc_type = DocumentType.PROGRESS
+        # 再匹配 Bug
+        elif any(kw in content_lower for kw in bug_keywords):
+            doc_type = DocumentType.TESTING
+        # 再匹配需求
+        elif any(kw in content_lower for kw in requirement_keywords):
+            doc_type = DocumentType.REQUIREMENTS
+        # 开发动作默认已经是 development
+
+        # 获取当前文档内容
+        current = self.project_state.get_document(
+            doc_type, "project_manager", full=True
+        ) or ""
+
+        # 格式化新条目
+        timestamp = time.strftime('%Y-%m-%d %H:%M')
+        context_prefix = f"[{context}] " if context else ""
+        entry = f"\n\n## 记录 ({timestamp})\n\n{context_prefix}{content}\n"
+
+        # 更新文档（使用 project_manager 角色，因为 PM 可以更新所有文档）
+        success = self.project_state.update_document(
+            doc_type,
+            current + entry,
+            "project_manager",  # PM 可以更新所有文档
+            f"自动记录: {content[:30]}..."
+        )
+
+        if success:
+            self.project_state._save()
+            self._save_state()
+
+        return success
+
+    def record_requirement(self, content: str, priority: str = "P1") -> bool:
+        """
+        显式记录需求（当需要指定优先级时使用）
+
+        Args:
+            content: 需求内容
+            priority: 优先级 P0/P1/P2/P3
+
+        Returns:
+            是否成功
+        """
+        return self.record(f"[{priority}] {content}")
+
+    def record_bug(self, description: str, severity: str = "medium") -> bool:
+        """
+        显式记录 Bug（当需要指定严重程度时使用）
+
+        Args:
+            description: Bug 描述
+            severity: 严重程度 low/medium/high/critical
+
+        Returns:
+            是否成功
+        """
+        return self.record(f"[{severity}] {description}")
+
+    def record_progress(self, status: str, details: str = "") -> bool:
+        """
+        显式记录进度（当需要详细状态时使用）
+
+        Args:
+            status: 状态描述
+            details: 详细信息
+
+        Returns:
+            是否成功
+        """
+        return self.record(f"{status}\n{details}" if details else status)
+
+    # ==================== 需求与任务管理（底层方法） ====================
 
     def add_requirement(self, requirement: str, priority: str = "P1") -> bool:
         """
@@ -796,24 +921,37 @@ class Harness:
         """
         return self._save_state()
 
-    # ==================== 多会话管理 ====================
+    # ==================== 多会话管理（自动记录） ====================
 
-    def chat(self, message: str, role: str = "user") -> dict[str, Any]:
+    def chat(self, message: str, role: str = "user", auto_record: bool = True) -> dict[str, Any]:
         """
-        在当前会话中发送消息
+        在当前会话中发送消息（自动持久化）
 
-        可以在不打断主开发流程的情况下与其他角色对话
+        AI 对话时的核心方法，自动将消息记录到对应文档。
 
         Args:
             message: 消息内容
             role: 消息角色 (user/assistant/system)
+            auto_record: 是否自动记录到文档（默认 True）
 
         Returns:
             消息信息
 
+        自动记录规则（当 auto_record=True）：
+            - 用户消息（role="user"）：
+              → 调用 record() 智能识别内容类型并记录
+            - AI 消息（role="assistant"）：
+              → 调用 record() 记录 AI 的响应/分析结果
+
         Examples:
-            harness.chat("我想讨论一下登录功能的需求")
-            harness.chat("好的，让我来实现这个功能", role="assistant")
+            # 用户提出需求（自动记录到 requirements.md）
+            harness.chat("我需要一个用户登录功能")
+
+            # AI 回复（自动记录到 development.md 或对应文档）
+            harness.chat("好的，我来分析一下登录功能的实现方案", role="assistant")
+
+            # 禁用自动记录（仅存储到会话历史）
+            harness.chat("临时讨论的内容", auto_record=False)
         """
         role_map = {
             "user": MessageRole.USER,
@@ -822,48 +960,26 @@ class Harness:
         }
         msg_role = role_map.get(role, MessageRole.USER)
 
+        # 存储到会话历史
         msg = self.sessions.chat(message, msg_role)
         self._stats.messages_sent += 1
 
-        # 同时存储到记忆系统
+        # 存储到记忆系统
         self.memory.store_conversation(message, role=role, importance=50)
 
-        # 根据会话类型记录到对应文档
-        if self.project_state:
-            current_session = self.sessions.get_active_session()
-            session_type = current_session.session_type.value if current_session else "general"
+        # 自动记录到文档（核心功能）
+        if auto_record and self.project_state:
+            context = "用户" if role == "user" else "AI"
+            self.record(message, context=context)
 
-            # 根据会话类型选择记录位置
-            if session_type == "development":
-                # 开发对话记录到开发日志
-                current = self.project_state.get_document(
-                    DocumentType.DEVELOPMENT, "project_manager", full=True
-                ) or ""
-                entry = f"\n\n**[{role}]** {message}\n"
-                self.project_state.update_document(
-                    DocumentType.DEVELOPMENT,
-                    current + entry,
-                    "developer"
-                )
-            elif session_type == "product_manager":
-                # 产品对话追加到需求文档末尾
-                current = self.project_state.get_document(
-                    DocumentType.REQUIREMENTS, "project_manager", full=True
-                ) or ""
-                entry = f"\n\n**[{role}]** {message}\n"
-                self.project_state.update_document(
-                    DocumentType.REQUIREMENTS,
-                    current + entry,
-                    "product_manager"
-                )
-
-        # 保存状态（会话已由 SessionManager 自动保存）
+        # 保存状态
         self._save_state()
 
         return {
             "message_id": msg.id if msg else None,
             "session_id": self.sessions._active_session_id,
             "sent": msg is not None,
+            "recorded": auto_record and self.project_state is not None,
         }
 
     def switch_session(self, session_type: str) -> dict[str, Any]:
