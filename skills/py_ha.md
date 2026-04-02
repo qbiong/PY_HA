@@ -1,189 +1,185 @@
 # py_ha - Harness Engineering Skill
 
-py_ha是一个基于 Harness Engineering 理念构建的 AI Agent 协作框架，通过角色驱动和工作流驱动实现高效的开发协作。
+py_ha 是一个 Harness Engineering 框架，将软件工程团队最佳实践引入 AI Agent 开发。
 
-## 安装
+## 快速开始
 
-```bash
-pip install py-ha
-```
-
-## 核心能力
-
-### 1. 快速开发功能
-
-当用户请求开发新功能时：
-
-```python
-from py_ha import Harness
-
-harness = Harness()
-result = harness.develop("功能描述")
-```
-
-### 2. 快速修复Bug
-
-当用户报告Bug时：
-
-```python
-from py_ha import Harness
-
-harness = Harness()
-result = harness.fix_bug("Bug描述")
-```
-
-### 3. 组建开发团队
+### 开发功能
 
 ```python
 from py_ha import Harness
 
 harness = Harness("项目名")
-harness.setup_team({
-    "developer": "开发人员名称",
-    "tester": "测试人员名称",
-    "product_manager": "产品经理名称",
-})
+harness.setup_team()
+harness.develop("功能描述")  # 一键开发
 ```
 
-### 4. 需求分析
+### 修复 Bug
 
 ```python
-harness.analyze("需求描述")
+harness.fix_bug("Bug 描述")  # 一键修复
 ```
 
-### 5. 架构设计
+## 核心功能速查
 
-```python
-harness.design("系统描述")
-```
+| 操作 | 命令 |
+|------|------|
+| 开发功能 | `harness.develop("描述")` |
+| 修复 Bug | `harness.fix_bug("描述")` |
+| 需求分析 | `harness.analyze("需求")` |
+| 架构设计 | `harness.design("描述")` |
+| 存储记忆 | `harness.remember("key", "value", important=True)` |
+| 回忆信息 | `harness.recall("key")` |
+| 项目状态 | `harness.get_status()` |
 
 ## 角色系统
 
-py_ha 提供以下角色：
-
-| 角色 | 职责 |
-|------|------|
-| Developer | 功能开发、Bug修复、代码审查 |
-| Tester | 测试编写、测试执行、Bug报告 |
-| ProductManager | 需求分析、用户故事、优先级 |
-| Architect | 架构设计、技术选型 |
-| DocWriter | 文档编写、知识库维护 |
-| ProjectManager | 任务协调、进度追踪 |
+| 角色 | 职责 | 调用场景 |
+|------|------|----------|
+| ProductManager | 需求分析、用户故事 | 分析需求时 |
+| Architect | 架构设计、技术选型 | 设计系统时 |
+| Developer | 编码、Bug修复、代码审查 | 开发实现时 |
+| Tester | 测试编写、测试执行 | 质量验证时 |
+| DocWriter | 文档编写、知识库维护 | 文档记录时 |
+| ProjectManager | 任务协调、进度追踪 | 项目管理时 |
 
 ## 工作流
 
-### 功能开发流程
-需求分析 → 开发实现 → 测试验证
-
-### Bug修复流程
-Bug分析 → 代码修复 → 验证测试
-
-### 完整开发流程
+```
 需求分析 → 架构设计 → 开发实现 → 测试验证 → 文档编写 → 发布评审
+```
 
-## 使用示例
+**预定义流水线**：
+- `feature`: 需求→开发→测试（快速功能开发）
+- `bugfix`: 分析→修复→验证（Bug修复）
+- `standard`: 完整流程
 
-### 示例1: 开发用户登录功能
+```python
+harness.run_pipeline("feature", feature_request="用户登录")
+harness.run_pipeline("bugfix", bug_report="支付超时")
+```
+
+## 项目管理（渐进式披露）
+
+每个角色只获取必要信息，减少 Token 消耗：
+
+```python
+from py_ha import ProjectStateManager, DocumentType
+
+state = ProjectStateManager(".py_ha")
+state.initialize("项目名", "技术栈")
+
+# 更新文档
+state.update_document(DocumentType.REQUIREMENTS, "内容", "product_manager")
+
+# 为角色生成上下文
+dev_context = state.get_context_for_role("developer")  # 最小信息
+pm_context = state.get_context_for_role("project_manager")  # 完整信息
+```
+
+**文档类型**：
+- `REQUIREMENTS` - 需求文档
+- `DESIGN` - 设计文档
+- `DEVELOPMENT` - 开发日志
+- `TESTING` - 测试报告
+- `PROGRESS` - 进度报告
+
+## JVM 风格记忆管理
+
+```python
+from py_ha import MemoryManager
+
+manager = MemoryManager()
+
+# 存储重要知识（Permanent 区，永不回收）
+manager.store_important_knowledge("key", "value")
+
+# 分配普通记忆（Eden 区）
+manager.allocate_memory("内容", importance=50)
+
+# 触发 GC
+manager.invoke_gc_minor()
+```
+
+## 多会话管理
+
+```python
+# 主开发对话
+harness.chat("正在开发功能")
+
+# 切换到产品经理对话
+harness.switch_session("product_manager")
+harness.chat("需求讨论")
+
+# 切回主开发
+harness.switch_session("development")
+```
+
+## 使用场景示例
+
+### 场景1：用户说"帮我开发一个登录功能"
 
 ```python
 from py_ha import Harness
 
 harness = Harness("用户系统")
-harness.develop("实现用户登录功能，支持用户名密码和手机验证码两种方式")
+harness.setup_team()
+result = harness.develop("实现用户登录功能，支持用户名密码和手机验证码")
 ```
 
-### 示例2: 修复支付Bug
+### 场景2：用户说"有个支付超时的 Bug"
 
 ```python
-from py_ha import Harness
-
-harness = Harness()
 harness.fix_bug("订单支付时偶现超时问题")
 ```
 
-### 示例3: 分析需求
+### 场景3：用户说"帮我分析一下需求"
 
 ```python
-from py_ha import Harness
-
-harness = Harness("电商平台")
-harness.setup_team()
-harness.analyze("用户需要一个仪表盘来查看销售数据和趋势分析")
+harness.analyze("用户需要一个仪表盘来查看销售数据")
 ```
 
-## CLI 使用
-
-```bash
-# 安装后可直接使用
-py-ha develop "实现用户注册功能"
-py-ha fix "登录页面验证码无法显示"
-py-ha team
-py-ha status
-py-ha interactive
-```
-
-## 记忆系统
-
-保存和召回重要信息：
+### 场景4：用户说"帮我设计系统架构"
 
 ```python
-# 记忆重要信息
+harness.design("微服务架构的电商系统，包含用户、商品、订单服务")
+```
+
+### 场景5：用户说"记住这个重要信息"
+
+```python
 harness.remember("project_goal", "构建电商平台", important=True)
-
-# 回忆信息
-goal = harness.recall("project_goal")
 ```
 
-## 项目报告
+### 场景6：用户说"项目进展如何"
 
 ```python
-# 执行开发任务后
-harness.develop("功能1")
-harness.develop("功能2")
-harness.fix_bug("Bug1")
-
-# 生成报告
 print(harness.get_report())
 ```
 
-## 进阶使用
+## CLI 命令
 
-### 自定义工作流
-
-```python
-from py_ha import Harness, WorkflowPipeline, WorkflowStage
-
-harness = Harness()
-
-# 创建自定义流水线
-pipeline = WorkflowPipeline("custom_pipeline")
-pipeline.add_stage(WorkflowStage(
-    name="custom_stage",
-    description="自定义阶段",
-    role="developer",
-    inputs=["input1"],
-    outputs=["output1"],
-))
-
-harness.coordinator.register_workflow("custom", pipeline)
+```bash
+py-ha init              # 首次使用引导
+py-ha develop "功能"    # 开发功能
+py-ha fix "Bug描述"     # 修复 Bug
+py-ha status            # 项目状态
+py-ha team              # 团队信息
+py-ha interactive       # 交互模式
 ```
 
-### 直接使用角色
+## 项目目录结构
 
-```python
-from py_ha import Developer
-
-dev = Developer(role_id="dev_1", name="小李")
-
-# 查看技能
-print([s.name for s in dev.list_skills()])
-
-# 分配任务
-dev.assign_task({
-    "type": "implement_feature",
-    "description": "实现用户登录",
-})
-
-# 执行任务
-result = dev.execute_task()
+```
+.py_ha/
+├── project.json         # 项目信息
+├── state.json           # 工作状态
+├── sessions.json        # 会话历史
+├── documents/           # 项目文档
+│   ├── requirements.md
+│   ├── design.md
+│   ├── development.md
+│   ├── testing.md
+│   └── progress.md
+└── knowledge/           # 知识库
 ```
