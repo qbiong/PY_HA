@@ -2,6 +2,17 @@
 
 py_ha 是一个 Harness Engineering 框架，将软件工程团队最佳实践引入 AI Agent 开发。
 
+## Harness 6 大核心能力
+
+| 能力 | 模块 | 说明 |
+|------|------|------|
+| **AGENTS.md** | `AgentsKnowledgeManager` | 项目知识文件，自动注入上下文 |
+| **Hooks** | `HooksManager` | 质量门禁，确定性规则约束 |
+| **Context Engine** | `ContextEngine` | 上下文压缩/摘要，对抗 Context Rot |
+| **Memory** | `MemoryManager` | JVM 风格分代记忆管理 |
+| **FileSystem** | `VirtualFS` | 虚拟文件系统，多后端支持 |
+| **HumanLoop** | `HumanLoop` | 人机交互，审批节点 |
+
 ## 用户对话指南（AI 助手必读）
 
 **用户只需自然对话，AI 助手自动调用相应方法：**

@@ -42,6 +42,21 @@ py_ha 将软件工程团队的最佳实践引入 AI Agent 开发，让 AI 像真
 | 混乱的记忆管理 | JVM 风格的分代记忆系统 |
 | 复杂的数据库配置 | 轻量化存储，开箱即用 |
 | Token 消耗过大 | 渐进式披露，按需加载 |
+| 无质量保障 | Hooks 质量门禁系统 |
+| 上下文退化 | Context Engine 智能压缩 |
+
+### Harness 6 大核心能力
+
+基于 Harness Engineering 最佳实践：
+
+| 能力 | 说明 | 模块 |
+|------|------|------|
+| **AGENTS.md** | 项目知识文件，自动注入上下文 | `AgentsKnowledgeManager` |
+| **Hooks** | 质量门禁，确定性规则约束 | `HooksManager` |
+| **Context Engine** | 上下文压缩/摘要，对抗 Context Rot | `ContextEngine` |
+| **Memory** | JVM 风格分代记忆管理 | `MemoryManager` |
+| **FileSystem** | 虚拟文件系统，多后端支持 | `VirtualFS` |
+| **HumanLoop** | 人机交互，审批节点 | `HumanLoop` |
 
 ### 角色驱动协作
 
@@ -484,11 +499,13 @@ py_ha/
 │   │   ├── markdown.py       # Markdown存储
 │   │   └── manager.py        # 存储管理器
 │   │
-│   ├── harness/               # 可选功能
+│   ├── harness/               # Harness 核心能力
 │   │   ├── planning.py       # Todo管理
 │   │   ├── filesystem.py     # 虚拟文件系统
-│   │   ├── sandbox.py        # 代码沙箱
-│   │   └── human_loop.py     # 人机交互
+│   │   ├── human_loop.py     # 人机交互
+│   │   ├── agents_knowledge.py # AGENTS.md 知识文件
+│   │   ├── hooks.py          # 质量门禁系统
+│   │   └── context_engine.py # 上下文引擎
 │   │
 │   └── mcp/                   # MCP Server
 │       └── server.py         # MCP工具定义
@@ -501,7 +518,34 @@ py_ha/
 
 ## 更新日志
 
-### v0.3.2 (当前版本)
+### v0.4.0 (当前版本)
+
+**新增：Harness 6 大核心能力**
+
+基于 Harness Engineering 最佳实践重构：
+
+1. **AGENTS.md 知识文件**
+   - `AgentsKnowledgeManager`: 项目知识文件管理
+   - 自动注入上下文，AI 启动时自动加载
+   - 渐进式披露，按角色/场景加载
+
+2. **Hooks 质量门禁系统**
+   - `HooksManager`: 质量门禁管理
+   - 内置检查：代码 Lint、安全检查、测试验证、格式检查
+   - 支持阻塞/非阻塞两种模式
+
+3. **Context Engine 上下文引擎**
+   - `ContextEngine`: 上下文压缩、摘要、裁剪
+   - `ContextRotDetector`: 检测上下文退化
+   - 对抗 Context Rot，减少 Token 消耗
+
+**架构优化**
+
+- 移除 Sandbox 模块（避免 Docker 依赖）
+- 整合 Harness 核心能力到独立模块
+- 更新导出和文档
+
+### v0.3.2
 
 **新增：项目经理工作流**
 

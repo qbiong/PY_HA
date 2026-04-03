@@ -12,7 +12,7 @@ A Harness Engineering Framework for AI Agent Collaboration
 - 一键执行: 快速完成功能开发/Bug修复
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # 主入口
 from py_ha.engine import Harness, create_harness
@@ -95,6 +95,34 @@ from py_ha.project import (
     get_region_load_strategy,
 )
 
+# Harness Module - 核心能力
+from py_ha.harness import (
+    # AGENTS Knowledge
+    AgentsKnowledgeManager,
+    KnowledgeSection,
+    AgentsKnowledge,
+    # Hooks
+    HooksManager,
+    BaseHook,
+    HookType,
+    HookMode,
+    HookResult,
+    HooksResult,
+    CodeLintHook,
+    SecurityHook,
+    ValidationHook,
+    TestPassHook,
+    FormatHook,
+    create_default_hooks,
+    # Context Engine
+    ContextEngine,
+    ContextLayer,
+    CompressionResult,
+    SummarizationResult,
+    ContextRotDetector,
+    create_context_engine,
+)
+
 __all__ = [
     # 主入口
     "Harness",
@@ -157,4 +185,28 @@ __all__ = [
     "REGION_LOAD_STRATEGY",
     "get_document_region",
     "get_region_load_strategy",
+    # Harness - AGENTS Knowledge
+    "AgentsKnowledgeManager",
+    "KnowledgeSection",
+    "AgentsKnowledge",
+    # Harness - Hooks
+    "HooksManager",
+    "BaseHook",
+    "HookType",
+    "HookMode",
+    "HookResult",
+    "HooksResult",
+    "CodeLintHook",
+    "SecurityHook",
+    "ValidationHook",
+    "TestPassHook",
+    "FormatHook",
+    "create_default_hooks",
+    # Harness - Context Engine
+    "ContextEngine",
+    "ContextLayer",
+    "CompressionResult",
+    "SummarizationResult",
+    "ContextRotDetector",
+    "create_context_engine",
 ]
