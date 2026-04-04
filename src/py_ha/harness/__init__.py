@@ -45,6 +45,14 @@ from py_ha.harness.context_engine import (
     ContextRotDetector,
     create_context_engine,
 )
+from py_ha.harness.context_assembler import (
+    ContextAssembler,
+    ContextSection,
+    ContextPriority,
+    PermanentKnowledge,
+    ActiveTaskContext,
+    create_context_assembler,
+)
 
 __all__ = [
     # Planning

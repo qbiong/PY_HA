@@ -1078,47 +1078,60 @@ class Harness:
 
     # ==================== 状态报告 ====================
 
-    def get_context_prompt(self) -> str:
+    def get_context_prompt(self, role: str = "project_manager", max_tokens: int = 4000) -> str:
         """
-        获取上下文提示（用于多轮对话保持对 py_ha 的使用）
+        获取上下文提示（JVM 风格分级记忆注入）
 
-        AI 助手应在每次对话时检查此方法返回的内容，确保正确使用 py_ha。
+        这是核心方法，每次调度大模型前必须调用，确保:
+        1. Permanent 区核心知识始终注入
+        2. Survivor 区当前任务上下文注入
+        3. Old 区历史摘要按需加载
+        4. Eden 区临时内容可选加载
+
+        Args:
+            role: 目标角色
+            max_tokens: 最大 Token 数
 
         Returns:
-            上下文提示字符串
+            装配好的上下文提示
+
+        使用示例:
+            # 每次对话开始时
+            context = harness.get_context_prompt()
+            # 返回: 项目知识 + 智能体定义 + 当前任务 + 核心方法
         """
-        context_parts = []
+        from py_ha.harness import ContextAssembler
+        assembler = ContextAssembler(self)
 
-        # 1. 从 AGENTS.md 获取项目知识
-        if self._agents_knowledge:
-            knowledge = self._agents_knowledge.get_knowledge_summary()
-            context_parts.append(knowledge)
+        if role == "project_manager":
+            return assembler.assemble_full(max_tokens)
+        else:
+            return assembler.assemble_for_role(role, max_tokens)
 
-        # 2. 当前任务
-        if self.project_state and self.project_state.has_active_task():
-            task = self.project_state.get_current_task()
-            context_parts.append(f"\n## 当前任务\n- 任务ID: {task['task_id']}\n- 内容: {task['task_desc']}")
+    def get_minimal_context(self) -> str:
+        """
+        获取最小上下文（仅永久知识 + 核心方法）
 
-        # 3. 项目状态摘要
-        if self.project_state:
-            stats = self.project_state.get_stats()
-            context_parts.append(f"\n## 项目进度\n- 功能: {stats['features_completed']}/{stats['features_total']}\n- 进度: {stats['progress']}%")
+        用于快速启动或 Token 受限场景。
 
-        # 4. 核心方法提示
-        context_parts.append("""
-## py_ha 核心方法（AI 必须使用）
+        Returns:
+            最小上下文字符串
+        """
+        from py_ha.harness import ContextAssembler
+        assembler = ContextAssembler(self)
+        return assembler.assemble_minimal()
 
-| 用户意图 | 调用方法 |
-|----------|----------|
-| 新需求/功能 | `harness.receive_request("描述", request_type="feature")` |
-| Bug报告 | `harness.receive_request("描述", request_type="bug")` |
-| 开发功能 | `harness.develop("功能描述")` |
-| 修复Bug | `harness.fix_bug("Bug描述")` |
-| 查看状态 | `harness.get_status()` |
-| 记录内容 | `harness.record("内容")` |
-""")
+    def get_context_assembler(self):
+        """
+        获取上下文装配器实例
 
-        return "\n".join(context_parts)
+        用于高级定制场景。
+
+        Returns:
+            ContextAssembler 实例
+        """
+        from py_ha.harness import ContextAssembler
+        return ContextAssembler(self)
 
     def get_status(self) -> dict[str, Any]:
         """

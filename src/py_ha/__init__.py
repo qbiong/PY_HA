@@ -121,6 +121,13 @@ from py_ha.harness import (
     SummarizationResult,
     ContextRotDetector,
     create_context_engine,
+    # Context Assembler
+    ContextAssembler,
+    ContextSection,
+    ContextPriority,
+    PermanentKnowledge,
+    ActiveTaskContext,
+    create_context_assembler,
 )
 
 __all__ = [
@@ -209,4 +216,11 @@ __all__ = [
     "SummarizationResult",
     "ContextRotDetector",
     "create_context_engine",
+    # Harness - Context Assembler
+    "ContextAssembler",
+    "ContextSection",
+    "ContextPriority",
+    "PermanentKnowledge",
+    "ActiveTaskContext",
+    "create_context_assembler",
 ]
