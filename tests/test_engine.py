@@ -2,15 +2,18 @@
 Engine (Harness) Tests - 测试主入口 Harness API
 
 测试覆盖:
-- 团队管理
-- 快速开发
-- 工作流执行
+- 创建和初始化
+- 请求接收
+- 任务完成
 - 记忆系统
+- 状态报告
+- 持久化
 """
 
 import pytest
 import tempfile
 import os
+import shutil
 from py_ha import Harness, create_harness, RoleType
 
 
@@ -27,6 +30,51 @@ class TestHarnessCreation:
         """测试带名称创建"""
         harness = Harness("测试项目", persistent=False)
         assert harness.project_name == "测试项目"
+
+    def test_create_persistent(self):
+        """测试持久化创建"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = os.path.join(tmpdir, ".py_ha")
+            harness = Harness("持久化项目", persistent=True, workspace=workspace)
+
+            assert harness.project_name == "持久化项目"
+            assert os.path.exists(workspace)
+
+
+class TestRequestHandling:
+    """测试请求处理"""
+
+    def test_receive_request_feature(self):
+        """测试接收功能请求"""
+        harness = Harness(persistent=False)
+        result = harness.receive_request("实现用户登录功能", request_type="feature")
+
+        assert result["success"] is True
+        assert result["task_id"].startswith("TASK-")
+        assert result["priority"] == "P1"
+        assert result["category"] == "功能开发"
+
+    def test_receive_request_bug(self):
+        """测试接收Bug请求"""
+        harness = Harness(persistent=False)
+        result = harness.receive_request("登录页面报错", request_type="bug")
+
+        assert result["success"] is True
+        assert result["priority"] == "P0"
+        assert result["category"] == "Bug修复"
+
+    def test_complete_task(self):
+        """测试完成任务"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = os.path.join(tmpdir, ".py_ha")
+            harness = Harness(persistent=True, workspace=workspace)
+            result = harness.receive_request("测试功能", request_type="feature")
+
+            success = harness.complete_task(result["task_id"], "功能已完成")
+            assert success is True
+
+            status = harness.get_status()
+            assert status["project_stats"]["features_completed"] == 1
 
 
 class TestTeamManagement:
@@ -51,54 +99,13 @@ class TestTeamManagement:
         assert result["team_size"] == 2
         assert len(result["members"]) == 2
 
-    def test_add_role(self):
-        """测试添加角色"""
+    def test_get_team(self):
+        """测试获取团队"""
         harness = Harness(persistent=False)
-        harness.add_role("developer", "新开发")
+        harness.setup_team()
 
         team = harness.get_team()
-        assert len(team) == 1
-        assert team[0]["name"] == "新开发"
-
-
-class TestQuickDevelopment:
-    """测试快速开发"""
-
-    def test_develop_feature(self):
-        """测试功能开发"""
-        harness = Harness(persistent=False)
-        result = harness.develop("实现用户登录功能")
-
-        assert result["status"] == "completed"
-        assert result["stages_completed"] == 3
-
-    def test_fix_bug(self):
-        """测试Bug修复"""
-        harness = Harness(persistent=False)
-        result = harness.fix_bug("登录页面报错")
-
-        assert result["status"] == "completed"
-        assert result["stages_completed"] == 3
-
-
-class TestAnalyzeAndDesign:
-    """测试分析和设计"""
-
-    def test_analyze(self):
-        """测试需求分析"""
-        harness = Harness(persistent=False)
-        harness.setup_team()
-
-        result = harness.analyze("用户需要一个仪表盘")
-        assert "analysis" in result
-
-    def test_design(self):
-        """测试架构设计"""
-        harness = Harness(persistent=False)
-        harness.setup_team()
-
-        result = harness.design("微服务架构系统")
-        assert "design" in result
+        assert len(team) == 6
 
 
 class TestMemorySystem:
@@ -114,39 +121,93 @@ class TestMemorySystem:
         assert harness.recall("key1") == "内容1"
         assert harness.recall("key2") == "重要内容"
 
+    def test_record(self):
+        """测试记录"""
+        harness = Harness(persistent=False)
+
+        success = harness.record("开发日志内容", context="开发过程")
+        assert success is True
+
+    def test_get_context_prompt(self):
+        """测试获取上下文提示"""
+        harness = Harness(persistent=False)
+        harness.remember("tech_stack", "Python")
+
+        context = harness.get_context_prompt("developer")
+
+        assert len(context) > 0
+
+    def test_get_minimal_context(self):
+        """测试获取最小上下文"""
+        harness = Harness(persistent=False)
+
+        context = harness.get_minimal_context()
+
+        assert len(context) > 0
+
 
 class TestStatusReport:
     """测试状态报告"""
 
     def test_get_status(self):
         """测试获取状态"""
-        harness = Harness(persistent=False)
-        harness.setup_team()
-        harness.develop("功能1")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = os.path.join(tmpdir, ".py_ha")
+            harness = Harness(persistent=True, workspace=workspace)
+            harness.setup_team()
+            harness.receive_request("功能1", request_type="feature")
 
-        status = harness.get_status()
-        assert status["team"]["size"] == 6
-        assert status["stats"]["features_developed"] == 1
+            status = harness.get_status()
+            assert status["team"]["size"] == 6
+            assert status["project_stats"]["features_total"] == 1
 
     def test_get_report(self):
         """测试获取报告"""
         harness = Harness("测试项目", persistent=False)
         harness.setup_team()
-        harness.develop("功能1")
-        harness.fix_bug("Bug1")
 
         report = harness.get_report()
         assert "测试项目" in report
 
 
-class TestPipelineStatus:
-    """测试工作流状态"""
+class TestSessionManagement:
+    """测试会话管理"""
 
-    def test_pipeline_status(self):
-        """测试工作流状态"""
+    def test_chat(self):
+        """测试对话"""
         harness = Harness(persistent=False)
-        harness.setup_team()
 
-        status = harness.get_pipeline_status()
-        assert "stats" in status
-        assert "coordinator_stats" in status
+        result = harness.chat("你好，我需要一个功能")
+
+        assert result["message_id"] is not None
+
+    def test_switch_session(self):
+        """测试切换会话"""
+        harness = Harness(persistent=False)
+
+        result = harness.switch_session("development")
+
+        assert result["switched"] is True
+
+
+class TestPersistence:
+    """测试持久化"""
+
+    def test_save_and_reload(self):
+        """测试保存和重新加载"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = os.path.join(tmpdir, ".py_ha")
+
+            # 创建并保存
+            harness = Harness("持久化测试", persistent=True, workspace=workspace)
+            harness.receive_request("功能1", request_type="feature")
+            harness.remember("key1", "value1")
+            harness.save()
+
+            # 重新加载
+            harness2 = Harness("新项目", persistent=True, workspace=workspace)
+
+            assert harness2.project_name == "持久化测试"
+            # 检查知识是否恢复
+            recalled = harness2.recall("key1")
+            assert recalled == "value1", f"Expected 'value1', got {recalled}"

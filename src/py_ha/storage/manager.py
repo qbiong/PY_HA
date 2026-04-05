@@ -4,10 +4,13 @@ Storage Manager - 统一存储管理
 提供简单的API，自动选择存储后端:
 - 默认使用内存存储 (无需配置)
 - 可选文件存储 (持久化)
+- 批量写入优化 (WriteBatch)
 """
 
+import threading
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from enum import Enum
 
 from py_ha.storage.markdown import MarkdownStorage, MarkdownKnowledgeBase
@@ -21,6 +24,141 @@ class StorageType(Enum):
     MEMORY = "memory"       # 内存存储 (默认，无需配置)
     FILE = "file"           # 文件存储 (持久化)
     MARKDOWN = "markdown"   # Markdown存储 (人类可读)
+
+
+class WriteBatch:
+    """
+    批量写入优化器
+
+    功能:
+    - 收集多次写入请求
+    - 延迟批量执行
+    - 减少磁盘 I/O 次数
+    - 自动去重（同一文件只保留最后一次写入）
+
+    使用示例:
+        batch = WriteBatch()
+        batch.queue("file1.md", "content1")
+        batch.queue("file2.md", "content2")
+        batch.flush()  # 批量写入
+
+        # 或者使用自动刷新
+        batch = WriteBatch(auto_flush=True, flush_interval=1.0)
+        batch.queue("file.md", "content")  # 1秒后自动刷新
+    """
+
+    def __init__(
+        self,
+        auto_flush: bool = False,
+        flush_interval: float = 1.0,
+        on_flush: Callable[[dict[str, str]], None] | None = None,
+    ) -> None:
+        """
+        初始化批量写入器
+
+        Args:
+            auto_flush: 是否自动刷新
+            flush_interval: 自动刷新间隔（秒）
+            on_flush: 刷新时的回调函数
+        """
+        self._pending: dict[str, str] = {}
+        self._timer: threading.Timer | None = None
+        self._auto_flush = auto_flush
+        self._flush_interval = flush_interval
+        self._on_flush = on_flush
+        self._lock = threading.Lock()
+        self._stats = {
+            "queued": 0,
+            "flushed": 0,
+            "deduplicated": 0,
+        }
+
+    def queue(self, file_path: str, content: str) -> None:
+        """
+        加入写入队列
+
+        Args:
+            file_path: 文件路径
+            content: 文件内容
+        """
+        with self._lock:
+            if file_path in self._pending:
+                self._stats["deduplicated"] += 1
+
+            self._pending[file_path] = content
+            self._stats["queued"] += 1
+
+            # 设置自动刷新定时器
+            if self._auto_flush and self._timer is None:
+                self._timer = threading.Timer(self._flush_interval, self.flush)
+                self._timer.start()
+
+    def flush(self) -> dict[str, bool]:
+        """
+        执行批量写入
+
+        Returns:
+            各文件的写入结果
+        """
+        with self._lock:
+            # 取消定时器
+            if self._timer:
+                self._timer.cancel()
+                self._timer = None
+
+            # 获取待写入内容
+            pending = self._pending.copy()
+            self._pending.clear()
+
+        results = {}
+
+        # 执行写入
+        for file_path, content in pending.items():
+            try:
+                # 确保目录存在
+                path = Path(file_path)
+                path.parent.mkdir(parents=True, exist_ok=True)
+
+                # 写入文件
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+
+                results[file_path] = True
+                self._stats["flushed"] += 1
+
+            except Exception:
+                results[file_path] = False
+
+        # 调用回调
+        if self._on_flush and results:
+            self._on_flush(results)
+
+        return results
+
+    def get_pending_count(self) -> int:
+        """获取待写入数量"""
+        return len(self._pending)
+
+    def get_stats(self) -> dict[str, int]:
+        """获取统计信息"""
+        return self._stats.copy()
+
+    def clear(self) -> int:
+        """
+        清空待写入队列（不写入）
+
+        Returns:
+            清除的数量
+        """
+        with self._lock:
+            count = len(self._pending)
+            self._pending.clear()
+
+            if self._timer:
+                self._timer.cancel()
+                self._timer = None
+
+            return count
 
 
 class StorageManager:

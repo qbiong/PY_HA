@@ -8,7 +8,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-117%20passed-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-80%20passed-green.svg)](tests/)
 
 </div>
 
@@ -19,11 +19,9 @@
 - [核心理念](#核心理念)
 - [安装方式](#安装方式)
 - [快速开始](#快速开始)
+- [从现有项目初始化](#从现有项目初始化)
 - [核心功能](#核心功能)
-- [项目管理与渐进式披露](#项目管理与渐进式披露)
 - [JVM风格记忆管理](#jvm风格记忆管理)
-- [工作流系统](#工作流系统)
-- [多会话记忆](#多会话记忆)
 - [项目结构](#项目结构)
 - [更新日志](#更新日志)
 
@@ -42,21 +40,7 @@ py_ha 将软件工程团队的最佳实践引入 AI Agent 开发，让 AI 像真
 | 混乱的记忆管理 | JVM 风格的分代记忆系统 |
 | 复杂的数据库配置 | 轻量化存储，开箱即用 |
 | Token 消耗过大 | 渐进式披露，按需加载 |
-| 无质量保障 | Hooks 质量门禁系统 |
-| 上下文退化 | Context Engine 智能压缩 |
-
-### Harness 6 大核心能力
-
-基于 Harness Engineering 最佳实践：
-
-| 能力 | 说明 | 模块 |
-|------|------|------|
-| **AGENTS.md** | 项目知识文件，自动注入上下文 | `AgentsKnowledgeManager` |
-| **Hooks** | 质量门禁，确定性规则约束 | `HooksManager` |
-| **Context Engine** | 上下文压缩/摘要，对抗 Context Rot | `ContextEngine` |
-| **Memory** | JVM 风格分代记忆管理 | `MemoryManager` |
-| **FileSystem** | 虚拟文件系统，多后端支持 | `VirtualFS` |
-| **HumanLoop** | 人机交互，审批节点 | `HumanLoop` |
+| 无持久化 | 自动持久化，重启恢复 |
 
 ### 角色驱动协作
 
@@ -76,6 +60,9 @@ py_ha 将软件工程团队的最佳实践引入 AI Agent 开发，让 AI 像真
 ## 安装方式
 
 ```bash
+# 从 PyPI 安装（发布后）
+pip install py-ha
+
 # 从源码安装
 git clone https://github.com/py-ha/py-ha.git
 cd py-ha
@@ -89,346 +76,189 @@ pip install -e ".[dev]"
 
 ## 快速开始
 
-### 用户对话指南（AI 助手必读）
+### 方式一：直接创建（新项目）
 
-**用户只需自然对话，AI 助手自动调用相应方法：**
+```python
+from py_ha import Harness
+
+# 创建项目（默认持久化到 .py_ha/ 目录）
+harness = Harness("我的项目")
+
+# 存储核心知识
+harness.remember("tech_stack", "Python + FastAPI", importance=100)
+
+# 接收需求
+result = harness.receive_request("实现用户登录功能")
+print(f"任务ID: {result['task_id']}")  # TASK-xxx
+print(f"优先级: {result['priority']}")  # P1
+
+# 获取上下文（用于 Claude Code 对话）
+context = harness.get_init_prompt()
+```
+
+### 方式二：从现有项目初始化（推荐）
+
+如果你已经有项目文档（README.md、requirements.md 等），可以直接导入：
+
+```python
+from py_ha import Harness
+
+# 从项目目录初始化（自动扫描并导入文档）
+harness = Harness.from_project("/path/to/your/project")
+
+# 自动完成：
+# - 提取项目名称和描述
+# - 识别技术栈
+# - 导入需求文档、设计文档等
+# - 生成完整的项目上下文
+
+# 获取初始化提示
+init_prompt = harness.get_init_prompt()
+print(init_prompt)  # 包含：API指南 + 项目信息 + 文档内容 + 当前任务
+```
+
+### Claude Code 对话初始化
+
+每次新对话开始时：
+
+```python
+from py_ha import Harness
+
+# 初始化（自动恢复之前的工作）
+harness = Harness("我的项目")
+
+# 获取上下文提示（注入到对话中）
+init_prompt = harness.get_init_prompt()
+
+# 之后正常对话
+harness.chat("我需要一个购物车功能")  # 自动识别并创建任务
+```
+
+### 用户对话自动处理
 
 | 用户说 | AI 调用 | 自动处理 |
 |--------|---------|----------|
-| "我需要一个登录功能" | `receive_request("...", "feature")` | 创建任务、分配P1、记录文档 |
-| "有个Bug/问题" | `receive_request("...", "bug")` | 创建任务、分配P0、记录文档 |
-| "帮我开发这个功能" | `develop("...")` | 执行开发流程 |
-| "帮我修复这个Bug" | `fix_bug("...")` | 执行修复流程 |
+| "我需要/要/添加功能" | `receive_request("...", "feature")` | 创建任务、分配P1、记录文档 |
+| "有bug/问题/错误" | `receive_request("...", "bug")` | 创建任务、分配P0、记录文档 |
+| "帮我开发" | `develop("...")` | 执行开发流程 |
+| "帮我修复" | `fix_bug("...")` | 执行修复流程 |
 | "项目进展如何" | `get_status()` | 返回项目状态 |
-| "当前在做什么" | `get_current_task()` | 返回当前任务 |
 
-### 一行代码完成所有工作
+---
+
+## 从现有项目初始化
+
+### `Harness.from_project()` 功能
+
+自动扫描项目文档并导入到记忆系统：
 
 ```python
+harness = Harness.from_project("/path/to/project")
+```
+
+### 自动识别的文档
+
+| 文件名 | 导入到 |
+|--------|--------|
+| README.md | 项目名称、描述、技术栈提取 |
+| requirements.md / 需求.md | requirements 文档 |
+| design.md / 设计.md | design 文档 |
+| development.md / 开发.md | development 文档 |
+| testing.md / 测试.md | testing 文档 |
+| progress.md / 进度.md | progress 文档 |
+| docs/*.md | 核心知识存储 |
+
+### 自动检测的技术栈
+
+- **语言**: Python, Node.js, Go, Rust, Java
+- **框架**: FastAPI, Django, Flask, React, Vue
+- **数据库**: PostgreSQL, MySQL, MongoDB, Redis
+- **部署**: Docker
+
+### 完整示例
+
+```python
+# 假设项目目录：
+# my-project/
+# ├── README.md           # 项目说明
+# ├── requirements.md     # 需求文档
+# ├── design.md           # 设计文档
+# └── pyproject.toml      # Python 配置
+
 from py_ha import Harness
 
-harness = Harness("项目名")
-harness.setup_team()
+# 一行代码完成初始化
+harness = Harness.from_project("my-project")
 
-# 用户对话 → 自动处理
-harness.chat("我需要一个登录功能")  # 自动: 创建任务、分配优先级、记录文档
-```
+# 查看导入结果
+print(harness.project_name)           # 从 README 标题提取
+print(harness.recall("tech_stack"))   # 自动检测的技术栈
+print(harness.memory.get_document("requirements"))  # 需求文档
 
-### 多轮对话保持（重要）
-
-**问题**: 多轮对话后 AI 可能忘记使用 py_ha 的方法
-
-**解决方案**: 每次对话开始时调用 `get_context_prompt()`
-
-```python
-# 获取上下文提示（包含项目知识、当前任务、核心方法）
-context = harness.get_context_prompt()
-print(context)
-# 返回:
-# ## 项目知识摘要
-# ...
-# ## 当前任务
-# - 任务ID: TASK-xxx
-# - 内容: ...
-# ## py_ha 核心方法（AI 必须使用）
-# ...
-```
-
-这确保了：
-1. AI 始终记住使用 py_ha 的方法
-2. 当前任务状态被正确传递
-3. 项目进度信息保持同步
-
-### 核心工作流
-
-### 项目经理对接用户
-
-**所有用户请求都由项目经理接收和处理：**
-
-```
-用户 → 项目经理（接收、分配、监督） → 开发者（执行） → 项目经理（确认完成）
-```
-
-**项目经理职责**：
-1. 接收用户需求/Bug报告
-2. 自动分配优先级和负责人
-3. 更新项目文档和统计数据
-4. 监督任务进度并确认完成
-
-### receive_request() - 项目经理接收请求
-
-```python
-from py_ha import Harness
-
-harness = Harness("项目名", persistent=True)
-harness.setup_team()
-
-# 项目经理接收需求（自动分配优先级、负责人、任务ID）
-result = harness.receive_request("用户需要一个登录功能")
-print(f"任务ID: {result['task_id']}")      # TASK-xxx
-print(f"优先级: {result['priority']}")     # P1
-print(f"负责人: {result['assignee']}")     # developer
-
-# 项目经理接收 Bug 报告（默认 P0 高优先级）
-result = harness.receive_request("登录页面异常", request_type="bug")
-```
-
-### chat() - 自动项目经理处理
-
-```python
-# 用户提出需求 → 项目经理自动接收并分配
-harness.chat("我需要一个搜索功能")
-# 自动: 创建任务、分配优先级、更新统计
-
-# AI 回复
-harness.chat("好的，我来实现搜索模块", role="assistant")
-```
-
-### 自动分配规则
-
-| 请求类型 | 默认优先级 | 默认负责人 | 记录文档 |
-|----------|------------|------------|----------|
-| feature | P1 | developer | requirements.md |
-| bug | P0 | developer | testing.md |
-| task | P2 | developer | requirements.md |
-
-### AI 对话自动记录（核心功能）
-
-AI 只需调用一个方法，自动识别内容类型并持久化到对应文档：
-
-```python
-from py_ha import Harness
-
-harness = Harness("项目名", persistent=True)
-harness.setup_team()
-
-# 智能识别并自动记录
-harness.record("用户需要一个登录功能")    # → requirements.md
-harness.record("发现登录页面验证码异常")  # → testing.md
-harness.record("已完成登录模块开发")      # → progress.md
-harness.record("正在实现用户认证逻辑")    # → development.md
-
-# chat() 方法默认自动记录
-harness.chat("我需要添加一个搜索功能")    # 用户消息自动记录
-harness.chat("好的，我来实现", role="assistant")  # AI回复自动记录
-```
-
-**自动识别规则**：
-
-| 优先级 | 关键词 | 记录位置 |
-|--------|--------|----------|
-| 1（最高）| 完成、已、进度、状态、更新、通过、成功 | progress.md |
-| 2 | bug、问题、错误、异常、失败、修复 | testing.md |
-| 3 | 需求、功能、需要、添加、新增、设计 | requirements.md |
-| 4（默认）| 实现、开发、编写、修改、优化 | development.md |
-
-### 一行代码开发功能
-
-```python
-from py_ha import Harness
-
-harness = Harness("我的项目")
-harness.setup_team()
-
-# 一键开发功能
-result = harness.develop("实现用户登录功能")
-print(f"状态: {result['status']}")  # completed
-
-# 一键修复 Bug
-result = harness.fix_bug("登录页面验证码无法显示")
-```
-
-### 组建自定义团队
-
-```python
-harness = Harness("电商平台")
-
-# 自定义团队成员
-harness.setup_team({
-    "product_manager": "王产品",
-    "developer": "李开发",
-    "tester": "张测试",
-})
-
-harness.develop("实现购物车功能")
+# 开始开发
+harness.receive_request("实现购物车功能")
 ```
 
 ---
 
 ## 核心功能
 
-### 快速开发
-
-一键完成需求分析 → 开发实现 → 测试验证：
+### 1. 接收用户请求
 
 ```python
-harness.develop("实现用户注册功能，支持邮箱和手机号注册")
+# 接收功能需求
+result = harness.receive_request("实现用户登录功能", request_type="feature")
+# 返回: {"task_id": "TASK-xxx", "priority": "P1", "assignee": "developer"}
+
+# 接收 Bug 报告
+result = harness.receive_request("登录页面报错", request_type="bug")
+# 返回: {"task_id": "TASK-xxx", "priority": "P0", ...}
 ```
 
-### 快速修复
-
-一键完成 Bug分析 → 代码修复 → 验证测试：
+### 2. 记忆管理
 
 ```python
-harness.fix_bug("支付页面偶尔超时")
-```
+# 存储核心知识（Permanent 区，永不回收）
+harness.remember("project_goal", "构建电商平台", importance=100)
 
-### 需求分析
-
-```python
-result = harness.analyze("用户需要一个仪表盘查看销售数据")
-# 输出: 需求列表、用户故事、验收标准
-```
-
-### 架构设计
-
-```python
-result = harness.design("微服务架构的电商系统")
-# 输出: 架构图、技术选型、设计决策
-```
-
-### 记忆系统
-
-JVM 风格的记忆管理，重要信息永不丢失：
-
-```python
-# 存储重要知识（进入 Permanent 区，永不回收）
-harness.remember("project_goal", "构建电商平台", important=True)
-
-# 回忆信息
+# 回忆知识
 goal = harness.recall("project_goal")
+
+# 记录到文档
+harness.record("完成了用户认证模块", context="开发进度")
 ```
 
----
-
-## 项目管理与渐进式披露
-
-### 核心概念
-
-项目采用**渐进式披露**原则，每个角色只获取自己需要的信息：
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    项目经理（中央协调者）                       │
-│                    可访问所有文档和状态                         │
-└─────────────────────────────────────────────────────────────┘
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        ↓                     ↓                     ↓
-┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-│   产品经理     │    │    开发者      │    │    测试员      │
-│ 需求文档完整   │    │ 项目信息+摘要  │    │ 测试相关+摘要  │
-│ 其他文档摘要   │    │ 当前任务完整   │    │ 需求摘要      │
-└───────────────┘    └───────────────┘    └───────────────┘
-```
-
-### 使用示例
+### 3. 对话记录
 
 ```python
-from py_ha import ProjectStateManager, DocumentType
+# 用户消息（自动识别需求/Bug）
+harness.chat("我需要一个搜索功能")
 
-# 创建项目状态管理器
-state = ProjectStateManager(".py_ha")
-state.initialize("电商平台", "Python + FastAPI")
-
-# 更新需求文档
-state.update_document(
-    DocumentType.REQUIREMENTS,
-    "# 需求\n## 用户登录\n...",
-    "product_manager"
-)
-
-# 为开发者生成最小上下文
-context = state.get_context_for_role("developer")
-# 只包含: 项目信息 + 需求摘要 + 设计摘要
+# AI 回复
+harness.chat("好的，我来实现搜索模块", role="assistant")
 ```
 
-### 文档所有权
+### 4. 任务完成
 
-| 文档 | 所有者 | 可见角色 |
-|------|--------|---------|
-| 需求文档 | 产品经理 | PM, 产品经理, 开发者(只读) |
-| 设计文档 | 架构师 | PM, 架构师, 开发者(只读) |
-| 开发日志 | 开发者 | PM, 开发者 |
-| 测试报告 | 测试员 | PM, 测试员, 开发者(只读) |
-| 进度报告 | 项目经理 | 所有角色 |
+```python
+# 标记任务完成
+harness.complete_task("TASK-xxx", "功能已完成，测试通过")
+```
+
+### 5. 状态查询
+
+```python
+# 获取项目状态
+status = harness.get_status()
+# 包含：项目信息、团队、统计、记忆状态、当前任务
+
+# 获取项目报告
+report = harness.get_report()
+```
 
 ---
 
 ## JVM风格记忆管理
-
-### 分代上下文注入（核心功能）
-
-**每次调度大模型时自动注入核心记忆，解决多轮对话退化问题。**
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     JVM 风格记忆分层                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │            Permanent 区（永久记忆）                    │   │
-│  │  每次必注入，永不省略                                   │   │
-│  │  - 项目目标和要求                                       │   │
-│  │  - 智能体定义和职责                                     │   │
-│  │  - 调度策略和流程规范                                   │   │
-│  │  - 核心代码约定                                         │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │            Survivor 区（活跃记忆）                     │   │
-│  │  当前任务上下文，每次注入                                │   │
-│  │  - 当前执行的任务信息                                   │   │
-│  │  - 相关需求文档摘要                                     │   │
-│  │  - 相关设计决策                                         │   │
-│  │  - 进度状态                                             │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Old 区（历史记忆）                        │   │
-│  │  按需加载摘要形式                                       │   │
-│  │  - 已完成的需求（压缩）                                 │   │
-│  │  - 历史设计文档（摘要）                                 │   │
-│  │  - 项目里程碑                                           │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │               Eden 区（临时记忆）                      │   │
-│  │  可丢弃，可选加载                                       │   │
-│  │  - 最近会话消息                                         │   │
-│  │  - 临时讨论内容                                         │   │
-│  │  - 开发日志                                             │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 自动上下文注入
-
-```python
-from py_ha import Harness
-
-harness = Harness("电商平台")
-harness.setup_team()
-
-# ⭐ 每次对话开始时调用（确保 AI 始终记住核心方法）
-context = harness.get_context_prompt()
-print(context)
-
-# 返回内容包含:
-# 1. Permanent 区: 项目信息、智能体定义、调度策略、核心方法
-# 2. Survivor 区: 当前任务、相关需求、进度状态
-# 3. Old 区: 项目统计、已完成功能摘要（按需）
-```
-
-**注入策略**:
-
-| 区域 | 加载时机 | 内容形式 | Token 消耗 |
-|------|----------|----------|------------|
-| Permanent | 每次必加载 | 完整内容 | 固定 (~500) |
-| Survivor | 每次加载 | 可压缩 | 动态 (~200) |
-| Old | 按需加载 | 摘要形式 | 可控 (~100) |
-| Eden | 可选加载 | 最近 N 条 | 可忽略 |
 
 ### 分代存储架构
 
@@ -436,139 +266,35 @@ print(context)
 ┌─────────────────────────────────────────────────────────────┐
 │                     JVM 风格记忆堆                            │
 ├─────────────────────────────────────────────────────────────┤
-│                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │            Permanent 区（永久代）                      │   │
 │  │  项目核心信息、重要知识 - 永不回收                       │   │
 │  └─────────────────────────────────────────────────────┘   │
-│                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │              Old 区（老年代）                          │   │
 │  │  长期存活记忆、设计文档 - Major GC 清理                 │   │
 │  └─────────────────────────────────────────────────────┘   │
-│                                                             │
 │  ┌───────────────────┐    ┌───────────────────┐           │
 │  │   Survivor 区     │ ←→ │   Survivor 区     │           │
 │  │  活跃文档、需求    │    │   GC 交换区       │           │
 │  └───────────────────┘    └───────────────────┘           │
-│                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │               Eden 区（新生代）                        │   │
 │  │  新消息、临时内容 - Minor GC 频繁清理                   │   │
 │  └─────────────────────────────────────────────────────┘   │
-│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 文档区域映射
+### 渐进式披露
 
-| 区域 | 文档类型 | 特点 |
-|------|----------|------|
-| Permanent | 项目信息、团队配置 | 永不回收，始终加载 |
-| Old | 设计文档、已完成需求 | 长期存储，按需加载摘要 |
-| Survivor | 当前需求、进度报告 | 活跃文档，自动加载摘要 |
-| Eden | 开发日志、测试报告 | 临时内容，按需加载 |
-
-### ContextAssembler 使用示例
+每个角色只获取最小必要上下文：
 
 ```python
-from py_ha import Harness
+# 开发者上下文：项目信息 + 需求摘要 + 设计摘要
+dev_context = harness.memory.get_context_for_role("developer")
 
-harness = Harness("电商平台")
-harness.setup_team()
-
-# 获取上下文装配器
-assembler = harness.get_context_assembler()
-
-# 为开发者装配最小上下文（Token优化）
-dev_context = assembler.assemble_for_role("developer", max_tokens=4000)
-
-# 为项目经理装配完整上下文
-pm_context = assembler.assemble_for_role("project_manager", max_tokens=8000)
-
-# 获取最小上下文（快速启动）
-minimal = assembler.assemble_minimal()
-
-# 获取统计信息
-stats = assembler.get_stats()
-print(stats)  # {'permanent_loaded': True, 'active_task_exists': False, ...}
-```
-
-### MemoryManager 使用示例
-
-```python
-from py_ha import MemoryManager, MemoryRegion
-
-manager = MemoryManager()
-
-# 分配记忆（自动进入 Eden 区）
-entry = manager.allocate_memory("用户需要登录功能", importance=50)
-
-# 存储重要知识（进入 Permanent 区）
-manager.store_important_knowledge("project_goal", "构建电商平台")
-
-# 触发 GC 清理不活跃记忆
-result = manager.invoke_gc_minor()
-print(f"清理了 {len(result.collected_ids)} 条记忆")
-
-# 获取健康报告
-health = manager.get_health_report()
-print(f"状态: {health['status']}")
-```
-
----
-
-## 工作流系统
-
-### 预定义流水线
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     标准开发流水线                                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  需求分析 ──► 架构设计 ──► 开发实现 ──► 测试验证 ──► 文档编写 ──► 发布评审  │
-│  (PM)        (Arch)      (Dev)       (Tester)     (Doc)       (Mgr)    │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-| 流水线 | 流程 | 用途 |
-|--------|------|------|
-| `standard` | 需求→设计→开发→测试→文档→发布 | 完整开发流程 |
-| `feature` | 需求→开发→测试 | 快速功能开发 |
-| `bugfix` | 分析→修复→验证 | Bug修复 |
-
-### 使用示例
-
-```python
-# 运行功能开发流程
-result = harness.run_pipeline("feature", feature_request="用户登录")
-
-# 运行标准流程
-result = harness.run_pipeline("standard", user_request="电商平台")
-
-# 运行 Bug 修复流程
-result = harness.run_pipeline("bugfix", bug_report="支付超时")
-```
-
----
-
-## 多会话记忆
-
-在项目开发过程中维护多个独立的对话会话：
-
-```python
-# 主开发流程
-harness.chat("正在开发购物车功能")
-
-# 切换到产品经理对话
-harness.switch_session("product_manager")
-harness.chat("购物车需要支持哪些功能？")
-
-# 切回主开发
-harness.switch_session("development")
-harness.chat("需求已确认，继续开发")
+# 项目经理上下文：所有文档完整内容
+pm_context = harness.memory.get_context_for_role("project_manager")
 ```
 
 ---
@@ -581,186 +307,94 @@ py_ha/
 │   ├── engine.py              # 主入口 Harness 类
 │   ├── session.py             # 多会话管理
 │   ├── guide.py               # 首次使用引导
-│   ├── cli.py                 # 命令行接口
 │   │
 │   ├── roles/                 # 角色系统
-│   │   ├── base.py           # 角色基类
 │   │   ├── developer.py      # 开发者
 │   │   ├── tester.py         # 测试员
 │   │   ├── product_manager.py # 产品经理
 │   │   ├── architect.py      # 架构师
-│   │   ├── doc_writer.py     # 文档管理员
 │   │   └── project_manager.py # 项目经理
 │   │
-│   ├── workflow/              # 工作流系统
-│   │   ├── pipeline.py       # 流水线定义
-│   │   ├── coordinator.py    # 协调器
-│   │   └── context.py        # 上下文
-│   │
-│   ├── memory/                # JVM风格记忆管理
+│   ├── memory/                # JVM风格记忆管理（统一入口）
+│   │   ├── manager.py        # 记忆管理器 + 文档系统
 │   │   ├── heap.py           # 分代堆内存
 │   │   ├── gc.py             # 垃圾回收
-│   │   ├── hotspot.py        # 热点检测
-│   │   ├── assembler.py      # 自动装配
-│   │   └── manager.py        # 记忆管理器
-│   │
-│   ├── project/               # 项目管理
-│   │   ├── document.py       # 文档实体 + JVM区域映射
-│   │   └── state.py          # 项目状态管理
-│   │
-│   ├── kernel/                # 任务内核
-│   │   ├── kernel.py         # 内核
-│   │   ├── task.py           # 任务定义
-│   │   ├── queue.py          # 任务队列
-│   │   ├── producer.py       # 生产者
-│   │   ├── consumer.py       # 消费者
-│   │   └── scheduler.py      # 调度器
+│   │   └── hotspot.py        # 热点检测
 │   │
 │   ├── storage/               # 轻量化存储
-│   │   ├── memory.py         # 内存存储
 │   │   ├── json_store.py     # JSON存储
-│   │   ├── markdown.py       # Markdown存储
-│   │   └── manager.py        # 存储管理器
+│   │   └── markdown.py       # Markdown存储
 │   │
-│   ├── harness/               # Harness 核心能力
-│   │   ├── planning.py       # Todo管理
-│   │   ├── filesystem.py     # 虚拟文件系统
-│   │   ├── human_loop.py     # 人机交互
-│   │   ├── agents_knowledge.py # AGENTS.md 知识文件
-│   │   ├── hooks.py          # 质量门禁系统
-│   │   └── context_engine.py # 上下文引擎
-│   │
-│   └── mcp/                   # MCP Server
-│       └── server.py         # MCP工具定义
+│   └── harness/               # 核心能力
+│       ├── human_loop.py     # 人机交互
+│       ├── agents_knowledge.py # AGENTS.md
+│       ├── hooks.py          # 质量门禁
+│       └── context_assembler.py # 上下文装配
 │
-├── tests/                     # 测试文件
-└── examples/                  # 使用示例
+└── tests/                     # 测试文件
 ```
 
 ---
 
 ## 更新日志
 
-### v0.4.0 (当前版本)
+### v0.5.0 (当前版本)
 
-**新增：Harness 6 大核心能力**
+**新功能**
 
-基于 Harness Engineering 最佳实践重构：
+1. **`Harness.from_project()`** - 从现有项目目录初始化
+   - 自动扫描项目文档（README.md、requirements.md 等）
+   - 自动提取项目名称、描述、技术栈
+   - 一行代码完成项目导入
 
-1. **AGENTS.md 知识文件**
-   - `AgentsKnowledgeManager`: 项目知识文件管理
-   - 自动注入上下文，AI 启动时自动加载
-   - 渐进式披露，按角色/场景加载
+2. **`get_init_prompt()`** - 获取完整的初始化提示
+   - 包含 API 使用指南
+   - 包含项目信息和文档内容
+   - 专为 Claude Code 对话设计
 
-2. **Hooks 质量门禁系统**
-   - `HooksManager`: 质量门禁管理
-   - 内置检查：代码 Lint、安全检查、测试验证、格式检查
-   - 支持阻塞/非阻塞两种模式
+3. **任务持久化** - 新增 `current_task.json`
+   - 当前任务自动保存
+   - 重启后自动恢复
 
-3. **Context Engine 上下文引擎**
-   - `ContextEngine`: 上下文压缩、摘要、裁剪
-   - `ContextRotDetector`: 检测上下文退化
-   - 对抗 Context Rot，减少 Token 消耗
+4. **知识持久化** - 新增 `knowledge.json`
+   - Permanent 区知识自动保存
+   - 重启后自动恢复
 
-**架构优化**
+**架构重构**
 
-- 移除 Sandbox 模块（避免 Docker 依赖）
-- 整合 Harness 核心能力到独立模块
-- 更新导出和文档
+- 删除冗余模块：`kernel/`、`mcp/`、`tools/`、`project/`
+- 合并 `project/` 到 `memory/` - `MemoryManager` 成为统一入口
+- 激活 JVM 功能：GC 和 Hotspot 正常工作
+- 代码精简约 3000 行
 
-### v0.3.2
+**API 变更**
 
-**新增：项目经理工作流**
+```python
+# 旧版本
+from py_ha import ProjectStateManager
+state = ProjectStateManager(".py_ha")
 
-- `receive_request()`: 项目经理接收用户请求，自动分配优先级和负责人
-- `assign_task()`: 项目经理分配任务
-- `complete_task()`: 项目经理确认任务完成
-- 默认会话改为项目经理，所有用户请求通过项目经理对接
-- 项目统计自动更新：功能总数、已完成、进度百分比
+# 新版本（统一入口）
+from py_ha import Harness
+harness = Harness("项目名")
+harness.memory  # MemoryManager 统一管理
+```
 
-**新增：多窗口任务检测**
+### v0.4.0
 
-- `get_current_task()`: 获取当前执行的任务
-- `has_active_task()`: 检查是否有活动任务
-- `reload()`: 从文件系统重新加载最新状态
-- 不同窗口可以检测正在执行的需求
-
-**工作流程优化**：
-- 用户 → 项目经理 → 开发者 → 项目经理确认
-- 需求自动记录到 requirements.md（带任务ID、优先级、负责人）
-- 进度自动记录到 progress.md
-- 统计数据实时更新
-
-### v0.3.1
-
-**新增：AI 对话智能自动记录**
-
-- `record()` 方法：智能识别内容类型并自动持久化到对应文档
-- `chat()` 方法增强：默认自动调用 `record()` 记录对话内容
-- 便捷方法：`record_requirement()`、`record_bug()`、`record_progress()`
-- 关键词优先级匹配：进度 > Bug > 需求 > 开发
-
-**解决问题**：
-- AI 对话时无需显式调用文档管理方法
-- 不同对话框可以维护同一份项目文件
-- 所有操作自动持久化到 `.py_ha/documents/` 目录
+- 新增 Harness 6 大核心能力
+- 移除 Sandbox 模块
 
 ### v0.3.0
 
-**架构重构：精简核心，消除冗余**
-
-- 删除未使用的 `runtime/` 模块（与 `engine.py` 重复设计）
-- 删除未使用的 `core/` 模块
-- 合并 `project/memory_integration.py` 到 `document.py`
-- 将 JVM 区域映射整合到文档系统
-
-**新增：项目管理与渐进式披露**
-
-- `ProjectStateManager`: 项目状态管理器，提供渐进式信息披露
-- `ProjectDocument`: 文档实体，支持所有权和版本管理
-- 文档按 JVM 风格分代：Permanent(永久) / Old(长期) / Survivor(活跃) / Eden(临时)
-- 每个角色只获取最小必要上下文，减少 Token 消耗
-
-**代码量变化**
-
-| 指标 | v0.2.0 | v0.3.0 | 减少 |
-|------|--------|--------|------|
-| Python 文件 | 57 | 51 | -6 |
-| 代码行数 | 12,574 | 11,435 | -1,139 |
-| 测试数量 | 133 | 117 | -16 |
-
-### v0.2.3
-
-**新增：完整的持久化存储支持**
-
-- 默认开启持久化，所有工作内容自动保存到 `.py_ha/` 目录
-- 会话历史、项目状态、知识库持久化
-
-### v0.2.2
-
-**新增：首次使用引导系统**
-
-- 交互式首次使用引导
-- 欢迎信息生成
-- CLI 命令：`py-ha init`、`py-ha welcome`
-
-### v0.2.1
-
-**新增：多会话记忆**
-
-- 支持 7 种会话类型的独立对话历史
-- 会话切换和持久化
+- 项目管理与渐进式披露
+- JVM 风格分代存储
 
 ### v0.2.0
 
-**初始版本**
-
 - 角色驱动协作：6 种团队角色
-- 工作流驱动：标准/功能/Bug修复流程
-- JVM 风格记忆管理
+- 工作流驱动开发
 - 轻量化存储
-- MCP 集成
-- CLI 命令
 
 ---
 

@@ -4,11 +4,10 @@ Harness - Harness Engineering 主入口
 提供简洁的 API 来使用 Harness Engineering 框架
 
 核心概念:
+- Memory: 统一记忆管理（JVM风格分代存储）
 - Team: 开发团队，包含多个角色
-- Pipeline: 工作流流水线
-- Task: 待执行的任务
+- Workflow: 工作流流水线
 - Session: 多对话会话管理
-- Persistence: 持久化存储，重启后自动恢复
 
 使用示例:
     from py_ha import Harness
@@ -16,17 +15,17 @@ Harness - Harness Engineering 主入口
     # 创建 Harness 实例（默认持久化）
     harness = Harness("我的项目")
 
+    # 从现有项目文档初始化（推荐）
+    harness = Harness.from_project("/path/to/project")
+
     # 快速开发功能
     result = harness.develop("实现用户登录功能")
 
-    # 多对话支持
-    harness.switch_session("product_manager")
-    harness.chat("登录功能需要支持哪些方式？")
+    # 项目经理接收请求
+    result = harness.receive_request("需要一个搜索功能")
 
-    harness.switch_session("development")
-    harness.chat("继续开发...")
-
-    # 下次启动时自动恢复之前的工作内容
+    # 完成任务
+    harness.complete_task(result['task_id'], "功能已完成")
 """
 
 from typing import Any
@@ -34,6 +33,9 @@ from pydantic import BaseModel, Field
 import time
 import os
 import json
+import uuid
+import re
+import glob
 
 from py_ha.roles import (
     AgentRole,
@@ -57,16 +59,10 @@ from py_ha.session import (
     Message,
 )
 from py_ha.guide import OnboardingGuide, ProjectConfig
-from py_ha.project import (
-    ProjectStateManager,
-    DocumentType,
-    get_document_region,
-)
 
 
 class HarnessStats(BaseModel):
     """Harness 统计"""
-
     features_developed: int = Field(default=0, description="开发的功能数")
     bugs_fixed: int = Field(default=0, description="修复的Bug数")
     workflows_completed: int = Field(default=0, description="完成的工作流数")
@@ -78,41 +74,17 @@ class Harness:
     """
     Harness - Harness Engineering 主入口类
 
-    提供简洁的 API 来管理开发团队和工作流
-
     核心方法:
-    - setup_team(): 组建开发团队
+    - receive_request(): 项目经理接收请求
+    - complete_task(): 完成任务
     - develop(): 快速开发功能
     - fix_bug(): 快速修复Bug
-    - analyze(): 分析需求
-    - review(): 代码审查
-    - chat(): 多对话会话管理
-    - switch_session(): 切换对话会话
+    - chat(): 对话（自动记录）
+    - get_context_prompt(): 获取上下文提示（用于LLM）
 
     持久化支持:
     - 默认开启持久化，数据保存在 .py_ha/ 目录
     - 重启后自动加载之前的工作内容
-    - 会话历史、项目配置、记忆都会持久化
-
-    使用示例:
-        # 默认持久化
-        harness = Harness("我的项目")
-
-        # 禁用持久化（仅内存）
-        harness = Harness("我的项目", persistent=False)
-
-        # 自定义存储路径
-        harness = Harness("我的项目", workspace=".my_project")
-
-        harness.setup_team()  # 创建默认团队
-        result = harness.develop("用户登录功能")
-
-        # 多对话支持
-        harness.switch_session("product_manager")
-        harness.chat("登录功能需求讨论...")
-
-        harness.switch_session("development")
-        harness.chat("继续开发...")
     """
 
     def __init__(
@@ -130,51 +102,33 @@ class Harness:
             project_name: 项目名称
             persistent: 是否持久化存储（默认 True）
             workspace: 工作空间目录（默认 .py_ha）
-            config_path: 配置文件路径（可选）
         """
         self.project_name = project_name
         self._workspace = workspace
         self._persistent = persistent
 
-        # 初始化核心组件
+        # 核心组件：统一记忆管理
+        self.memory = MemoryManager(workspace)
+        self.memory.project_info.name = project_name
+        self.memory.store_knowledge("project_name", project_name)
+
+        # 工作流协调器
         self.coordinator = WorkflowCoordinator()
 
-        # 存储系统
+        # 存储系统（用于AGENTS.md等）
         self.storage = create_storage(persistent=persistent, base_path=workspace)
 
-        # 记忆系统
-        self.memory = MemoryManager()
-
-        # 项目状态管理器（核心持久化组件）
-        self.project_state: ProjectStateManager | None = None
-        if persistent:
-            self.project_state = ProjectStateManager(workspace)
-            # 如果项目信息为空，初始化项目名称
-            if not self.project_state.project_info.name:
-                self.project_state.project_info.name = project_name
-                self.project_state._save()
-            else:
-                # 恢复项目名称
-                self.project_name = self.project_state.project_info.name
-
-        # AGENTS.md 知识管理器（自动初始化）
-        self._agents_knowledge: "AgentsKnowledgeManager | None" = None
+        # AGENTS.md 知识管理器
+        self._agents_knowledge = None
         if persistent:
             from py_ha.harness import AgentsKnowledgeManager
             self._agents_knowledge = AgentsKnowledgeManager(workspace)
-            # 如果 AGENTS.md 未初始化，自动创建
             if not self._agents_knowledge.is_initialized():
-                self._agents_knowledge.initialize(
-                    project_name,
-                    tech_stack="",
-                    status="init"
-                )
+                self._agents_knowledge.initialize(project_name, "", "init")
 
-        # 会话管理（支持持久化）- 默认使用项目经理会话
+        # 会话管理
         session_path = os.path.join(workspace, "sessions.json") if persistent else None
         self.sessions = SessionManager(persist_path=session_path)
-
-        # 确保默认会话是项目经理（用户通过项目经理对接）
         if not self.sessions.get_active_session():
             self.sessions.switch_session(SessionType.PROJECT_MANAGER)
 
@@ -190,9 +144,208 @@ class Harness:
         self.coordinator.register_workflow("feature", create_feature_pipeline())
         self.coordinator.register_workflow("bugfix", create_bugfix_pipeline())
 
-        # 尝试加载之前的工作状态
+        # 加载之前的工作状态
         if persistent:
             self._load_state()
+
+    @classmethod
+    def from_project(
+        cls,
+        project_path: str,
+        *,
+        workspace: str | None = None,
+        doc_patterns: list[str] | None = None,
+    ) -> "Harness":
+        """
+        从现有项目目录初始化 Harness
+
+        自动扫描项目文档并导入到记忆系统，支持：
+        - README.md / readme.md
+        - requirements.md / needs.md / 需求.md
+        - design.md / architecture.md / 设计.md
+        - progress.md / 进度.md
+        - development.md / dev.md / 开发.md
+        - testing.md / test.md / 测试.md
+        - docs/ 目录下的 .md 文件
+
+        Args:
+            project_path: 项目根目录路径
+            workspace: py_ha 工作空间路径（默认为项目目录下的 .py_ha）
+            doc_patterns: 自定义文档匹配模式
+
+        Returns:
+            初始化好的 Harness 实例
+
+        使用示例:
+            # 从项目目录初始化
+            harness = Harness.from_project("/path/to/my-project")
+
+            # 获取导入的项目信息
+            context = harness.get_init_prompt()
+        """
+        project_path = os.path.abspath(project_path)
+        if workspace is None:
+            workspace = os.path.join(project_path, ".py_ha")
+
+        # 默认文档匹配模式
+        if doc_patterns is None:
+            doc_patterns = [
+                "README.md",
+                "readme.md",
+                "requirements.md",
+                "needs.md",
+                "需求.md",
+                "design.md",
+                "architecture.md",
+                "设计.md",
+                "progress.md",
+                "进度.md",
+                "development.md",
+                "dev.md",
+                "开发.md",
+                "testing.md",
+                "test.md",
+                "测试.md",
+                "docs/*.md",
+                "doc/*.md",
+            ]
+
+        # 扫描并读取文档
+        documents: dict[str, str] = {}
+        for pattern in doc_patterns:
+            full_pattern = os.path.join(project_path, pattern)
+            for file_path in glob.glob(full_pattern):
+                if os.path.isfile(file_path):
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                        if content.strip():
+                            doc_name = os.path.basename(file_path)
+                            documents[doc_name] = content
+                    except Exception:
+                        pass
+
+        # 提取项目名称
+        project_name = os.path.basename(project_path)
+        if "README.md" in documents:
+            # 尝试从 README 提取标题
+            readme = documents["README.md"]
+            title_match = re.search(r"^#\s+(.+)$", readme, re.MULTILINE)
+            if title_match:
+                project_name = title_match.group(1).strip()
+
+        # 创建 Harness 实例
+        harness = cls(project_name, workspace=workspace)
+
+        # 导入文档到记忆系统
+        harness._import_documents(documents)
+
+        # 提取项目信息
+        harness._extract_project_info(documents, project_path)
+
+        return harness
+
+    def _import_documents(self, documents: dict[str, str]) -> None:
+        """导入文档到记忆系统"""
+        # 文档类型映射
+        doc_type_map = {
+            "requirements.md": "requirements",
+            "needs.md": "requirements",
+            "需求.md": "requirements",
+            "design.md": "design",
+            "architecture.md": "design",
+            "设计.md": "design",
+            "development.md": "development",
+            "dev.md": "development",
+            "开发.md": "development",
+            "testing.md": "testing",
+            "test.md": "testing",
+            "测试.md": "testing",
+            "progress.md": "progress",
+            "进度.md": "progress",
+        }
+
+        for doc_name, content in documents.items():
+            # 确定文档类型
+            doc_type = doc_type_map.get(doc_name.lower(), None)
+
+            if doc_type:
+                # 存储到对应类型的文档
+                self.memory.store_document(doc_type, content)
+            else:
+                # 存储为核心知识
+                key = doc_name.replace(".", "_").replace("-", "_")
+                self.memory.store_knowledge(f"doc_{key}", content, importance=70)
+
+        # 保存状态
+        self._save_state()
+
+    def _extract_project_info(self, documents: dict[str, str], project_path: str) -> None:
+        """从文档中提取项目信息"""
+        readme = documents.get("README.md", "")
+
+        # 提取描述（第一段非标题内容）
+        if readme:
+            lines = readme.split("\n")
+            desc_lines = []
+            in_content = False
+            for line in lines:
+                if line.startswith("#"):
+                    if in_content:
+                        break
+                    continue
+                if line.strip() and not in_content:
+                    in_content = True
+                if in_content:
+                    desc_lines.append(line)
+                    if len(desc_lines) >= 5:
+                        break
+            description = " ".join(desc_lines).strip()[:500]
+            self.memory.project_info.description = description
+
+        # 检测技术栈
+        tech_indicators = {
+            "Python": ["requirements.txt", "setup.py", "pyproject.toml", ".py"],
+            "Node.js": ["package.json", ".js", ".ts"],
+            "Go": ["go.mod", ".go"],
+            "Rust": ["Cargo.toml", ".rs"],
+            "Java": ["pom.xml", "build.gradle", ".java"],
+        }
+
+        detected_tech = []
+        for tech, indicators in tech_indicators.items():
+            for indicator in indicators:
+                if os.path.exists(os.path.join(project_path, indicator)):
+                    detected_tech.append(tech)
+                    break
+
+        # 检查文档中的技术关键词
+        all_content = " ".join(documents.values()).lower()
+        tech_keywords = {
+            "FastAPI": ["fastapi", "fast-api"],
+            "Django": ["django"],
+            "Flask": ["flask"],
+            "React": ["react"],
+            "Vue": ["vue"],
+            "PostgreSQL": ["postgresql", "postgres"],
+            "MySQL": ["mysql"],
+            "MongoDB": ["mongodb"],
+            "Redis": ["redis"],
+            "Docker": ["docker"],
+        }
+
+        for tech, keywords in tech_keywords.items():
+            if any(kw in all_content for kw in keywords):
+                detected_tech.append(tech)
+
+        if detected_tech:
+            tech_stack = " + ".join(dict.fromkeys(detected_tech))
+            self.memory.project_info.tech_stack = tech_stack
+            self.memory.store_knowledge("tech_stack", tech_stack, importance=100)
+
+        # 更新项目状态
+        self.memory.project_info.status = "initialized"
+        self.memory._save()
 
     def _load_state(self) -> bool:
         """加载之前的工作状态"""
@@ -204,11 +357,10 @@ class Harness:
             with open(state_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            # 恢复项目名称
             if "project_name" in data:
                 self.project_name = data["project_name"]
+                self.memory.project_info.name = self.project_name
 
-            # 恢复统计
             if "stats" in data:
                 self._stats = HarnessStats(**data["stats"])
 
@@ -234,46 +386,16 @@ class Harness:
             with open(state_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
-            # 同时保存会话
             self.sessions.save()
-
             return True
         except Exception:
             return False
 
-    def is_persistent(self) -> bool:
-        """是否使用持久化存储"""
-        return self._persistent
-
-    def get_workspace(self) -> str:
-        """获取工作空间路径"""
-        return self._workspace
-
     # ==================== 团队管理 ====================
 
     def setup_team(self, team_config: dict[str, str] | None = None) -> dict[str, Any]:
-        """
-        组建开发团队
-
-        Args:
-            team_config: 团队配置，key=角色类型，value=角色名称
-                        默认创建完整团队
-
-        Returns:
-            团队信息
-
-        Examples:
-            # 默认团队
-            harness.setup_team()
-
-            # 自定义团队
-            harness.setup_team({
-                "developer": "小李",
-                "tester": "小张",
-            })
-        """
+        """组建开发团队"""
         if team_config is None:
-            # 默认团队配置
             team_config = {
                 "product_manager": "产品经理",
                 "architect": "架构师",
@@ -308,490 +430,72 @@ class Harness:
             "members": created,
         }
 
-    def add_role(self, role_type: str, name: str) -> AgentRole:
-        """
-        添加单个角色
-
-        Args:
-            role_type: 角色类型 (developer, tester, product_manager 等)
-            name: 角色名称
-
-        Returns:
-            创建的角色实例
-        """
-        role_type_map = {
-            "product_manager": RoleType.PRODUCT_MANAGER,
-            "architect": RoleType.ARCHITECT,
-            "developer": RoleType.DEVELOPER,
-            "tester": RoleType.TESTER,
-            "doc_writer": RoleType.DOC_WRITER,
-            "project_manager": RoleType.PROJECT_MANAGER,
-        }
-
-        rt = role_type_map.get(role_type.lower())
-        if not rt:
-            raise ValueError(f"Unknown role type: {role_type}")
-
-        import uuid
-        role_id = f"{role_type}_{uuid.uuid4().hex[:6]}"
-        role = self.coordinator.create_role(rt, role_id, name)
-        self._stats.team_size += 1
-
-        return role
-
     def get_team(self) -> list[dict[str, Any]]:
         """获取团队信息"""
         return self.coordinator.list_roles()
 
-    # ==================== 快速开发 ====================
-
-    def develop(self, feature_request: str) -> dict[str, Any]:
-        """
-        快速开发功能（通过项目经理调度）
-
-        流程: 项目经理接收 → 分配任务 → 开发实现 → 测试验证 → 项目经理确认
-
-        Args:
-            feature_request: 功能需求描述
-
-        Returns:
-            开发结果
-
-        Examples:
-            result = harness.develop("实现用户登录功能")
-        """
-        # 1. 项目经理接收请求
-        task_info = self.receive_request(feature_request, request_type="feature")
-
-        # 2. 确保有开发团队
-        if not self.coordinator.get_roles_by_type(RoleType.DEVELOPER):
-            self.coordinator.create_role(RoleType.DEVELOPER, "dev_auto", "开发人员")
-        if not self.coordinator.get_roles_by_type(RoleType.TESTER):
-            self.coordinator.create_role(RoleType.TESTER, "test_auto", "测试人员")
-
-        # 3. 执行开发工作流
-        result = self.coordinator.run_workflow(
-            "feature",
-            {"feature_request": feature_request},
-        )
-
-        # 4. 项目经理更新状态
-        if result.get("status") == "completed":
-            self._stats.features_developed += 1
-            self._stats.workflows_completed += 1
-
-            # 保存到记忆
-            self.memory.store_conversation(
-                f"功能开发: {feature_request}",
-                role="system",
-                importance=70,
-            )
-
-            # 项目经理标记任务完成
-            if self.project_state and task_info.get("task_id"):
-                self.complete_task(
-                    task_info["task_id"],
-                    summary=f"功能开发完成: {feature_request[:50]}"
-                )
-
-            # 保存状态
-            self._save_state()
-
-        return {
-            "request": feature_request,
-            "task_id": task_info.get("task_id"),
-            "priority": task_info.get("priority"),
-            "assignee": task_info.get("assignee"),
-            "status": result.get("status"),
-            "stages_completed": len(result.get("results", [])),
-            "artifacts": result.get("artifacts", []),
-        }
-
-    def fix_bug(self, bug_description: str) -> dict[str, Any]:
-        """
-        快速修复 Bug（通过项目经理调度）
-
-        流程: 项目经理接收 → 分配任务 → Bug分析 → 代码修复 → 验证测试
-
-        Args:
-            bug_description: Bug 描述
-
-        Returns:
-            修复结果
-
-        Examples:
-            result = harness.fix_bug("登录页面无法提交表单")
-        """
-        # 1. 项目经理接收请求
-        task_info = self.receive_request(bug_description, request_type="bug")
-
-        # 2. 确保有开发团队
-        if not self.coordinator.get_roles_by_type(RoleType.DEVELOPER):
-            self.coordinator.create_role(RoleType.DEVELOPER, "dev_auto", "开发人员")
-        if not self.coordinator.get_roles_by_type(RoleType.TESTER):
-            self.coordinator.create_role(RoleType.TESTER, "test_auto", "测试人员")
-
-        # 3. 执行修复工作流
-        result = self.coordinator.run_workflow(
-            "bugfix",
-            {"bug_report": bug_description},
-        )
-
-        # 4. 项目经理更新状态
-        if result.get("status") == "completed":
-            self._stats.bugs_fixed += 1
-            self._stats.workflows_completed += 1
-
-            # 保存到记忆
-            self.memory.store_conversation(
-                f"Bug修复: {bug_description}",
-                role="system",
-                importance=60,
-            )
-
-            # 项目经理标记任务完成
-            if self.project_state and task_info.get("task_id"):
-                self.complete_task(
-                    task_info["task_id"],
-                    summary=f"Bug修复完成: {bug_description[:50]}"
-                )
-
-            # 保存状态
-            self._save_state()
-
-        return {
-            "bug": bug_description,
-            "task_id": task_info.get("task_id"),
-            "priority": task_info.get("priority"),
-            "assignee": task_info.get("assignee"),
-            "status": result.get("status"),
-            "stages_completed": len(result.get("results", [])),
-        }
-
-    def analyze(self, requirement: str) -> dict[str, Any]:
-        """
-        分析需求
-
-        Args:
-            requirement: 需求描述
-
-        Returns:
-            分析结果
-        """
-        if not self.coordinator.get_roles_by_type(RoleType.PRODUCT_MANAGER):
-            self.coordinator.create_role(RoleType.PRODUCT_MANAGER, "pm_auto", "产品经理")
-
-        pm = self.coordinator.get_roles_by_type(RoleType.PRODUCT_MANAGER)[0]
-
-        pm.assign_task({
-            "type": "requirements",
-            "description": f"分析需求: {requirement}",
-            "inputs": {"user_input": requirement},
-        })
-
-        result = pm.execute_task()
-
-        return {
-            "requirement": requirement,
-            "analysis": result.get("outputs", {}),
-        }
-
-    def design(self, system_description: str) -> dict[str, Any]:
-        """
-        设计系统架构
-
-        Args:
-            system_description: 系统描述
-
-        Returns:
-            设计结果
-        """
-        if not self.coordinator.get_roles_by_type(RoleType.ARCHITECT):
-            self.coordinator.create_role(RoleType.ARCHITECT, "arch_auto", "架构师")
-
-        arch = self.coordinator.get_roles_by_type(RoleType.ARCHITECT)[0]
-
-        arch.assign_task({
-            "type": "design",
-            "description": f"设计系统: {system_description}",
-            "inputs": {"requirements": system_description},
-        })
-
-        result = arch.execute_task()
-
-        return {
-            "system": system_description,
-            "design": result.get("outputs", {}),
-        }
-
-    def review_code(self, code: str) -> dict[str, Any]:
-        """
-        代码审查
-
-        Args:
-            code: 待审查的代码
-
-        Returns:
-            审查结果
-        """
-        if not self.coordinator.get_roles_by_type(RoleType.DEVELOPER):
-            self.coordinator.create_role(RoleType.DEVELOPER, "dev_auto", "开发人员")
-
-        dev = self.coordinator.get_roles_by_type(RoleType.DEVELOPER)[0]
-
-        dev.assign_task({
-            "type": "code_review",
-            "description": "代码审查",
-            "inputs": {"code": code},
-        })
-
-        result = dev.execute_task()
-
-        return {
-            "review": result.get("outputs", {}),
-        }
-
-    # ==================== 工作流管理 ====================
-
-    def run_pipeline(self, pipeline_type: str = "feature", **inputs: Any) -> dict[str, Any]:
-        """
-        运行工作流
-
-        Args:
-            pipeline_type: 工作流类型 (standard, feature, bugfix)
-            **inputs: 输入参数
-
-        Returns:
-            执行结果
-        """
-        result = self.coordinator.run_workflow(pipeline_type, inputs)
-
-        if result.get("status") == "completed":
-            self._stats.workflows_completed += 1
-
-        return result
-
-    def get_pipeline_status(self) -> dict[str, Any]:
-        """获取工作流状态"""
-        return {
-            "stats": self._stats.model_dump(),
-            "coordinator_stats": self.coordinator.get_stats().model_dump(),
-        }
-
-    # ==================== 记忆与存储 ====================
-
-    def remember(self, key: str, content: str, important: bool = False) -> None:
-        """
-        记忆重要信息
-
-        Args:
-            key: 键名
-            content: 内容
-            important: 是否重要（重要信息永不清除）
-        """
-        if important:
-            self.memory.store_important_knowledge(key, content)
-        else:
-            self.memory.store_conversation(content, importance=50)
-
-        self.storage.save_knowledge(key, content)
-
-        # 保存状态
-        self._save_state()
-
-    def recall(self, key: str) -> str | None:
-        """
-        回忆信息
-
-        Args:
-            key: 键名
-
-        Returns:
-            存储的内容
-        """
-        # 先从存储获取
-        content = self.storage.load_knowledge(key)
-        if content:
-            return content
-
-        # 再从记忆获取
-        return self.memory.get_knowledge(key)
-
-    # ==================== 智能记录（核心方法） ====================
+    # ==================== 项目经理核心方法 ====================
 
     def receive_request(self, request: str, request_type: str = "feature") -> dict[str, Any]:
         """
         项目经理接收用户请求（核心入口方法）
 
-        这是 AI 对话的主要入口，项目经理负责：
-        1. 接收用户需求/Bug报告
-        2. 分配优先级和负责人
-        3. 更新项目文档和统计
-        4. 创建任务并安排执行
-
         Args:
             request: 用户请求内容
-            request_type: 请求类型 (feature/bug/task/discussion)
+            request_type: 请求类型 (feature/bug/task)
 
         Returns:
             处理结果，包含任务ID、优先级、负责人等信息
-
-        Examples:
-            # 用户提出需求
-            harness.receive_request("我需要一个用户登录功能")
-
-            # 用户报告 Bug
-            harness.receive_request("登录页面验证码显示异常", request_type="bug")
         """
-        if not self.project_state:
-            return {"success": False, "error": "项目状态未初始化"}
-
         timestamp = time.strftime('%Y-%m-%d %H:%M')
-        task_id = f"TASK-{int(time.time())}"
+        task_id = f"TASK-{int(time.time_ns() % 1000000000)}-{uuid.uuid4().hex[:4]}"
 
-        # 根据请求类型分配优先级和负责人
+        # 根据请求类型分配优先级
         if request_type == "bug":
-            priority = "P0"  # Bug 默认高优先级
-            assignee = "developer"
-            doc_type = DocumentType.TESTING
+            priority = "P0"
             category = "Bug修复"
         elif request_type == "feature":
-            priority = "P1"  # 功能默认中优先级
-            assignee = "developer"
-            doc_type = DocumentType.REQUIREMENTS
+            priority = "P1"
             category = "功能开发"
         else:
             priority = "P2"
-            assignee = "developer"
-            doc_type = DocumentType.REQUIREMENTS
             category = "任务"
 
-        # 1. 更新需求/测试文档（结构化格式）
-        current_doc = self.project_state.get_document(
-            doc_type, "project_manager", full=True
-        ) or self._get_doc_header(doc_type)
+        # 存储任务到 Survivor 区
+        self.memory.store_task(task_id, {
+            "request": request,
+            "type": request_type,
+            "category": category,
+            "priority": priority,
+            "status": "pending",
+            "created_at": timestamp,
+        })
 
-        new_entry = f"""
-### {category} [{priority}] ({timestamp})
+        # 更新进度文档
+        progress = self.memory.get_document("progress") or "# 项目进度\n"
+        progress += f"\n## {task_id} - {category}\n- **描述**: {request}\n- **优先级**: {priority}\n- **状态**: 待处理\n- **创建时间**: {timestamp}\n"
+        self.memory.store_document("progress", progress)
 
-**任务ID**: {task_id}
-**描述**: {request}
-**负责人**: {assignee}
-**状态**: 待处理
-
----
-"""
-        self.project_state.update_document(
-            doc_type,
-            current_doc + new_entry,
-            "project_manager",
-            f"新增{category}: {request[:30]}..."
-        )
-
-        # 2. 更新进度文档
-        progress_doc = self.project_state.get_document(
-            DocumentType.PROGRESS, "project_manager", full=True
-        ) or "# 项目进度\n"
-
-        task_entry = f"""
-## {task_id} - {category}
-
-- **内容**: {request}
-- **优先级**: {priority}
-- **负责人**: {assignee}
-- **状态**: 待处理
-- **创建时间**: {timestamp}
-
-"""
-        self.project_state.update_document(
-            DocumentType.PROGRESS,
-            progress_doc + task_entry,
-            "project_manager",
-            f"创建任务: {task_id}"
-        )
-
-        # 3. 更新项目统计
+        # 更新统计
         if request_type == "bug":
-            self.project_state.stats.bugs_total += 1
+            self.memory.update_stats("bugs_total", 1)
         else:
-            self.project_state.stats.features_total += 1
+            self.memory.update_stats("features_total", 1)
 
-        # 4. 设置为当前任务（其他窗口可检测）
-        self.project_state.set_current_task(task_id, request)
+        # 存储会话消息
+        self.memory.store_message(request, "user")
 
-        self.project_state._save()
-
-        # 5. 保存 Harness 状态
         self._save_state()
 
         return {
             "success": True,
             "task_id": task_id,
             "priority": priority,
-            "assignee": assignee,
+            "assignee": "developer",
             "category": category,
             "status": "待处理",
             "timestamp": timestamp,
-            "message": f"项目经理已接收请求，任务 {task_id} 已分配给 {assignee}，优先级 {priority}"
         }
-
-    def _get_doc_header(self, doc_type: str) -> str:
-        """获取文档标题"""
-        headers = {
-            DocumentType.REQUIREMENTS: "# 项目需求\n\n本文档记录所有功能需求和用户故事。\n",
-            DocumentType.TESTING: "# 测试报告\n\n本文档记录 Bug 报告和测试结果。\n",
-            DocumentType.DEVELOPMENT: "# 开发日志\n\n本文档记录开发过程和技术决策。\n",
-            DocumentType.PROGRESS: "# 项目进度\n\n本文档记录任务进度和里程碑。\n",
-            DocumentType.DESIGN: "# 设计文档\n\n本文档记录系统架构和设计方案。\n",
-        }
-        return headers.get(doc_type, "# 文档\n")
-
-    def assign_task(self, task_id: str, assignee: str, priority: str = None) -> bool:
-        """
-        项目经理分配任务
-
-        Args:
-            task_id: 任务ID
-            assignee: 负责人
-            priority: 可选的新优先级
-
-        Returns:
-            是否成功
-        """
-        if not self.project_state:
-            return False
-
-        # 更新进度文档中的任务
-        progress = self.project_state.get_document(
-            DocumentType.PROGRESS, "project_manager", full=True
-        ) or ""
-
-        if task_id in progress:
-            # 更新负责人
-            import re
-            if assignee:
-                progress = re.sub(
-                    rf'(\*\*负责人\*\*:\s*)\w+',
-                    f'**负责人**: {assignee}',
-                    progress
-                )
-            if priority:
-                progress = re.sub(
-                    rf'(\*\*优先级\*\*:\s*)P\d',
-                    f'**优先级**: {priority}',
-                    progress
-                )
-
-            self.project_state.update_document(
-                DocumentType.PROGRESS,
-                progress,
-                "project_manager",
-                f"分配任务 {task_id} 给 {assignee}"
-            )
-            self.project_state._save()
-            return True
-
-        return False
 
     def complete_task(self, task_id: str, summary: str = "") -> bool:
         """
@@ -800,411 +504,134 @@ class Harness:
         Args:
             task_id: 任务ID
             summary: 完成摘要
-
-        Returns:
-            是否成功
         """
-        if not self.project_state:
+        timestamp = time.strftime('%Y-%m-%d %H:%M')
+
+        # 获取任务
+        task = self.memory.get_task(task_id)
+        if not task:
             return False
 
-        timestamp = time.strftime('%Y-%m-%d %H:%M')
+        # 判断任务类型
+        is_bug = task.get("category") in ("Bug修复", "Bug")
+
+        # 更新任务状态
+        task["status"] = "completed"
+        task["completed_at"] = timestamp
+        task["summary"] = summary
+        self.memory.store_task(task_id, task)
 
         # 更新进度文档
-        progress = self.project_state.get_document(
-            DocumentType.PROGRESS, "project_manager", full=True
-        ) or ""
-
+        progress = self.memory.get_document("progress") or ""
         if task_id in progress:
-            import re
-            # 更新状态
             progress = re.sub(
-                rf'(\*\*状态\*\*:\s*)\S+',
-                f'**状态**: 已完成',
+                r'(\*\*状态\*\*:\s*)\S+',
+                '**状态**: 已完成',
                 progress
             )
+            progress += f"\n  - **完成时间**: {timestamp}\n  - **完成说明**: {summary}\n"
+            self.memory.store_document("progress", progress)
 
-            # 添加完成记录
-            completion_note = f"\n  - **完成时间**: {timestamp}"
-            if summary:
-                completion_note += f"\n  - **完成说明**: {summary}"
-
-            self.project_state.update_document(
-                DocumentType.PROGRESS,
-                progress + completion_note,
-                "project_manager",
-                f"完成任务: {task_id}"
-            )
-
-            # 更新统计
-            self.project_state.stats.features_completed += 1
-            self.project_state.stats.progress = int(
-                self.project_state.stats.features_completed /
-                max(self.project_state.stats.features_total, 1) * 100
-            )
-
-            # 清除当前任务
-            self.project_state.clear_current_task()
-
-            self.project_state._save()
-            self._save_state()
-
-            return True
-
-        return False
-
-    def record(self, content: str, context: str = "") -> bool:
-        """
-        智能记录内容到项目文档（自动识别类型）
-
-        AI 对话时只需调用此方法，系统自动判断内容类型并持久化到对应文档。
-
-        自动识别规则：
-        - 需求类关键词（"需求"、"功能"、"需要"、"要"、"添加"、"新增"）
-          → requirements.md
-        - Bug类关键词（"bug"、"问题"、"错误"、"异常"、"失败"、"修复"）
-          → testing.md
-        - 进度类关键词（"完成"、"已"、"进度"、"状态"、"更新"）
-          → progress.md
-        - 其他内容 → development.md（开发日志）
-
-        Args:
-            content: 要记录的内容
-            context: 可选的上下文信息（如 "用户说"、"AI分析"）
-
-        Returns:
-            是否成功记录
-
-        Examples:
-            # AI 自动记录用户需求
-            harness.record("用户需要一个登录功能")
-
-            # AI 记录分析结果
-            harness.record("已完成登录模块开发", context="AI汇报")
-
-            # AI 记录 Bug 信息
-            harness.record("发现登录页面验证码显示异常")
-        """
-        if not self.project_state:
-            return False
-
-        # 关键词分类（优先级：进度 > Bug > 需求，因为需求关键词最宽泛）
-        # 需求关键词：明确的需求表述
-        requirement_keywords = ["需求", "功能", "需要", "要", "添加", "新增", "设计"]
-        # Bug关键词：问题相关
-        bug_keywords = ["bug", "问题", "错误", "异常", "失败", "修复", "fix", "报错", "崩溃"]
-        # 进度关键词：状态更新（优先级最高）
-        progress_keywords = ["完成", "已", "进度", "状态", "更新", "通过", "成功"]
-        # 开发关键词：开发过程中的动作
-        development_keywords = ["实现", "开发", "编写", "修改", "优化", "重构"]
-
-        # 判断内容类型（按优先级匹配）
-        content_lower = content.lower()
-        doc_type = DocumentType.DEVELOPMENT  # 默认开发日志
-
-        # 先匹配进度（最高优先级）
-        if any(kw in content_lower for kw in progress_keywords):
-            doc_type = DocumentType.PROGRESS
-        # 再匹配 Bug
-        elif any(kw in content_lower for kw in bug_keywords):
-            doc_type = DocumentType.TESTING
-        # 再匹配需求
-        elif any(kw in content_lower for kw in requirement_keywords):
-            doc_type = DocumentType.REQUIREMENTS
-        # 开发动作默认已经是 development
-
-        # 获取当前文档内容
-        current = self.project_state.get_document(
-            doc_type, "project_manager", full=True
-        ) or ""
-
-        # 格式化新条目
-        timestamp = time.strftime('%Y-%m-%d %H:%M')
-        context_prefix = f"[{context}] " if context else ""
-        entry = f"\n\n## 记录 ({timestamp})\n\n{context_prefix}{content}\n"
-
-        # 更新文档（使用 project_manager 角色，因为 PM 可以更新所有文档）
-        success = self.project_state.update_document(
-            doc_type,
-            current + entry,
-            "project_manager",  # PM 可以更新所有文档
-            f"自动记录: {content[:30]}..."
-        )
-
-        if success:
-            self.project_state._save()
-            self._save_state()
-
-        return success
-
-    def record_requirement(self, content: str, priority: str = "P1") -> bool:
-        """
-        显式记录需求（当需要指定优先级时使用）
-
-        Args:
-            content: 需求内容
-            priority: 优先级 P0/P1/P2/P3
-
-        Returns:
-            是否成功
-        """
-        return self.record(f"[{priority}] {content}")
-
-    def record_bug(self, description: str, severity: str = "medium") -> bool:
-        """
-        显式记录 Bug（当需要指定严重程度时使用）
-
-        Args:
-            description: Bug 描述
-            severity: 严重程度 low/medium/high/critical
-
-        Returns:
-            是否成功
-        """
-        return self.record(f"[{severity}] {description}")
-
-    def record_progress(self, status: str, details: str = "") -> bool:
-        """
-        显式记录进度（当需要详细状态时使用）
-
-        Args:
-            status: 状态描述
-            details: 详细信息
-
-        Returns:
-            是否成功
-        """
-        return self.record(f"{status}\n{details}" if details else status)
-
-    # ==================== 需求与任务管理（底层方法） ====================
-
-    def add_requirement(self, requirement: str, priority: str = "P1") -> bool:
-        """
-        添加需求到需求文档
-
-        Args:
-            requirement: 需求描述
-            priority: 优先级 (P0/P1/P2)
-
-        Returns:
-            是否成功
-        """
-        if not self.project_state:
-            return False
-
-        current = self.project_state.get_document(
-            DocumentType.REQUIREMENTS, "project_manager", full=True
-        ) or ""
-
-        new_entry = f"\n\n### 需求 [{priority}] ({time.strftime('%Y-%m-%d %H:%M')})\n\n{requirement}\n"
-
-        return self.project_state.update_document(
-            DocumentType.REQUIREMENTS,
-            current + new_entry,
-            "product_manager",
-            f"新增需求: {requirement[:50]}..."
-        )
-
-    def get_requirements(self) -> str:
-        """获取需求文档"""
-        if self.project_state:
-            return self.project_state.get_document(
-                DocumentType.REQUIREMENTS, "project_manager", full=True
-            ) or ""
-        return ""
-
-    def get_progress(self) -> str:
-        """获取进度报告"""
-        if self.project_state:
-            return self.project_state.get_document(
-                DocumentType.PROGRESS, "project_manager", full=True
-            ) or ""
-        return ""
-
-    def get_development_log(self) -> str:
-        """获取开发日志"""
-        if self.project_state:
-            return self.project_state.get_document(
-                DocumentType.DEVELOPMENT, "project_manager", full=True
-            ) or ""
-        return ""
-
-    def get_project_info(self) -> dict[str, Any]:
-        """获取项目信息"""
-        if self.project_state:
-            return self.project_state.get_project_info()
-        return {"name": self.project_name}
-
-    def get_current_task(self) -> dict[str, Any]:
-        """
-        获取当前执行的任务（不同窗口可检测）
-
-        Returns:
-            当前任务信息，包含 task_id, task_desc, status
-        """
-        if self.project_state:
-            return self.project_state.get_current_task()
-        return {"task_id": "", "task_desc": "", "status": ""}
-
-    def has_active_task(self) -> bool:
-        """检查是否有正在执行的任务"""
-        if self.project_state:
-            return self.project_state.has_active_task()
-        return False
-
-    def reload(self) -> bool:
-        """
-        重新加载项目状态（从文件系统）
-
-        用于多窗口场景，确保获取最新数据
-
-        Returns:
-            是否成功加载
-        """
-        success = False
-
-        # 重新加载项目状态
-        if self.project_state:
-            success = self.project_state.reload()
-            if success:
-                # 同时恢复项目名称
-                self.project_name = self.project_state.project_info.name
-                self._load_state()
-
-        # 重新加载 AGENTS.md 知识
-        if self._agents_knowledge:
-            self._agents_knowledge.reload()
-
-        return success
-
-    # ==================== 状态报告 ====================
-
-    def get_context_prompt(self, role: str = "project_manager", max_tokens: int = 4000) -> str:
-        """
-        获取上下文提示（JVM 风格分级记忆注入）
-
-        这是核心方法，每次调度大模型前必须调用，确保:
-        1. Permanent 区核心知识始终注入
-        2. Survivor 区当前任务上下文注入
-        3. Old 区历史摘要按需加载
-        4. Eden 区临时内容可选加载
-
-        Args:
-            role: 目标角色
-            max_tokens: 最大 Token 数
-
-        Returns:
-            装配好的上下文提示
-
-        使用示例:
-            # 每次对话开始时
-            context = harness.get_context_prompt()
-            # 返回: 项目知识 + 智能体定义 + 当前任务 + 核心方法
-        """
-        from py_ha.harness import ContextAssembler
-        assembler = ContextAssembler(self)
-
-        if role == "project_manager":
-            return assembler.assemble_full(max_tokens)
+        # 更新统计
+        if is_bug:
+            self.memory.update_stats("bugs_fixed", 1)
         else:
-            return assembler.assemble_for_role(role, max_tokens)
+            self.memory.update_stats("features_completed", 1)
 
-    def get_minimal_context(self) -> str:
-        """
-        获取最小上下文（仅永久知识 + 核心方法）
+        # 清除当前任务
+        self.memory.clear_task(task_id)
 
-        用于快速启动或 Token 受限场景。
+        self._save_state()
+        return True
 
-        Returns:
-            最小上下文字符串
-        """
-        from py_ha.harness import ContextAssembler
-        assembler = ContextAssembler(self)
-        return assembler.assemble_minimal()
+    # ==================== 快速开发 ====================
 
-    def get_context_assembler(self):
-        """
-        获取上下文装配器实例
+    def develop(self, feature_request: str) -> dict[str, Any]:
+        """快速开发功能"""
+        task_info = self.receive_request(feature_request, request_type="feature")
 
-        用于高级定制场景。
+        # 确保有开发团队
+        if not self.coordinator.get_roles_by_type(RoleType.DEVELOPER):
+            self.coordinator.create_role(RoleType.DEVELOPER, "dev_auto", "开发人员")
+        if not self.coordinator.get_roles_by_type(RoleType.TESTER):
+            self.coordinator.create_role(RoleType.TESTER, "test_auto", "测试人员")
 
-        Returns:
-            ContextAssembler 实例
-        """
-        from py_ha.harness import ContextAssembler
-        return ContextAssembler(self)
+        # 执行开发工作流
+        result = self.coordinator.run_workflow("feature", {"feature_request": feature_request})
 
-    def get_status(self) -> dict[str, Any]:
-        """
-        获取整体状态
+        if result.get("status") == "completed":
+            self._stats.features_developed += 1
+            self._stats.workflows_completed += 1
+            self.memory.store_message(f"功能开发完成: {feature_request}", "system")
+            if task_info.get("task_id"):
+                self.complete_task(task_info["task_id"], f"功能完成: {feature_request[:50]}")
+            self._save_state()
 
-        Returns:
-            状态信息
-        """
-        status = {
-            "project": self.project_name,
-            "team": {
-                "size": self._stats.team_size,
-                "members": self.coordinator.list_roles(),
-            },
-            "stats": self._stats.model_dump(),
-            "memory_health": self.memory.get_health_report()["status"],
-            "sessions": self.sessions.get_stats(),
-            "persistence": {
-                "enabled": self._persistent,
-                "workspace": self._workspace,
-            },
+        return {
+            "request": feature_request,
+            "task_id": task_info.get("task_id"),
+            "status": result.get("status"),
+            "artifacts": result.get("artifacts", []),
         }
 
-        # 添加项目状态信息
-        if self.project_state:
-            status["project_stats"] = self.project_state.get_stats()
-            status["documents"] = self.project_state.list_documents()
-            status["current_task"] = self.project_state.get_current_task()
-            status["has_active_task"] = self.project_state.has_active_task()
+    def fix_bug(self, bug_description: str) -> dict[str, Any]:
+        """快速修复 Bug"""
+        task_info = self.receive_request(bug_description, request_type="bug")
 
-        return status
+        if not self.coordinator.get_roles_by_type(RoleType.DEVELOPER):
+            self.coordinator.create_role(RoleType.DEVELOPER, "dev_auto", "开发人员")
+        if not self.coordinator.get_roles_by_type(RoleType.TESTER):
+            self.coordinator.create_role(RoleType.TESTER, "test_auto", "测试人员")
 
-    def save(self) -> bool:
-        """
-        手动保存当前工作状态
+        result = self.coordinator.run_workflow("bugfix", {"bug_report": bug_description})
 
-        Returns:
-            是否保存成功
-        """
-        return self._save_state()
+        if result.get("status") == "completed":
+            self._stats.bugs_fixed += 1
+            self._stats.workflows_completed += 1
+            self.memory.store_message(f"Bug修复完成: {bug_description}", "system")
+            if task_info.get("task_id"):
+                self.complete_task(task_info["task_id"], f"Bug修复: {bug_description[:50]}")
+            self._save_state()
 
-    # ==================== 多会话管理（自动记录） ====================
+        return {
+            "bug": bug_description,
+            "task_id": task_info.get("task_id"),
+            "status": result.get("status"),
+        }
+
+    # ==================== 记忆与上下文 ====================
+
+    def remember(self, key: str, content: str, important: bool = False) -> None:
+        """记忆重要信息"""
+        importance = 100 if important else 50
+        self.memory.store_knowledge(key, content, importance)
+        self._save_state()
+
+    def recall(self, key: str) -> str | None:
+        """回忆信息"""
+        return self.memory.get_knowledge(key)
+
+    def record(self, content: str, context: str = "", doc_type_hint: str | None = None) -> bool:
+        """智能记录内容"""
+        doc_type = doc_type_hint or "development"
+        current = self.memory.get_document(doc_type) or ""
+        timestamp = time.strftime('%Y-%m-%d %H:%M')
+        entry = f"\n## 记录 ({timestamp})\n[{context}] {content}\n"
+        self.memory.store_document(doc_type, current + entry)
+        return True
+
+    def get_context_prompt(self, role: str = "project_manager", max_tokens: int = 4000) -> str:
+        """获取上下文提示（用于 LLM）"""
+        return self.memory.get_context_for_llm(role, max_tokens)
+
+    def get_minimal_context(self) -> str:
+        """获取最小上下文"""
+        return self.memory.get_minimal_context()
+
+    # ==================== 会话管理 ====================
 
     def chat(self, message: str, role: str = "user", auto_record: bool = True) -> dict[str, Any]:
-        """
-        在当前会话中发送消息（自动持久化）
-
-        AI 对话时的核心方法，自动将消息记录到对应文档。
-
-        Args:
-            message: 消息内容
-            role: 消息角色 (user/assistant/system)
-            auto_record: 是否自动记录到文档（默认 True）
-
-        Returns:
-            消息信息
-
-        自动记录规则（当 auto_record=True）：
-            - 用户消息（role="user"）：
-              → 调用 record() 智能识别内容类型并记录
-            - AI 消息（role="assistant"）：
-              → 调用 record() 记录 AI 的响应/分析结果
-
-        Examples:
-            # 用户提出需求（项目经理自动接收并分配）
-            harness.chat("我需要一个用户登录功能")
-
-            # AI 回复（自动记录）
-            harness.chat("好的，我来分析一下登录功能的实现方案", role="assistant")
-
-            # 禁用自动记录（仅存储到会话历史）
-            harness.chat("临时讨论的内容", auto_record=False)
-        """
+        """在当前会话中发送消息"""
         role_map = {
             "user": MessageRole.USER,
             "assistant": MessageRole.ASSISTANT,
@@ -1212,103 +639,36 @@ class Harness:
         }
         msg_role = role_map.get(role, MessageRole.USER)
 
-        # 存储到会话历史
         msg = self.sessions.chat(message, msg_role)
         self._stats.messages_sent += 1
 
-        # 存储到记忆系统
-        self.memory.store_conversation(message, role=role, importance=50)
+        # 存储到记忆
+        self.memory.store_message(message, role)
 
-        # 自动记录到文档（核心功能）
+        # 自动处理用户请求
         task_info = None
-        action_result = None
-        if auto_record and self.project_state:
-            if role == "user":
-                # 用户消息：智能识别意图并处理
-                message_lower = message.lower()
+        if auto_record and role == "user":
+            if any(kw in message for kw in ["需要", "要", "添加", "新增", "功能"]):
+                task_info = self.receive_request(message, request_type="feature")
+            elif any(kw in message.lower() for kw in ["bug", "问题", "错误", "异常"]):
+                task_info = self.receive_request(message, request_type="bug")
 
-                # 1. 开发请求：帮我开发/实现...
-                is_develop = any(kw in message for kw in ["帮我开发", "帮我实现", "开发一下", "实现一下", "开始开发", "开始实现"])
-                if is_develop:
-                    action_result = self.develop(message.replace("帮我开发", "").replace("帮我实现", "").replace("开发一下", "").replace("实现一下", "").strip())
-                    task_info = {"task_id": action_result.get("task_id"), "action": "develop"}
-
-                # 2. 修复请求：帮我修复...
-                elif any(kw in message for kw in ["帮我修复", "修复一下", "帮我改"]):
-                    action_result = self.fix_bug(message.replace("帮我修复", "").replace("修复一下", "").replace("帮我改", "").strip())
-                    task_info = {"task_id": action_result.get("task_id"), "action": "fix_bug"}
-
-                # 3. 状态查询：项目进展/当前状态
-                elif any(kw in message for kw in ["进展", "状态", "项目情况", "项目报告"]):
-                    action_result = self.get_status()
-                    task_info = {"action": "get_status"}
-
-                # 4. 当前任务查询
-                elif any(kw in message for kw in ["当前任务", "正在做", "在做什么"]):
-                    action_result = self.get_current_task()
-                    task_info = {"action": "get_current_task"}
-
-                # 5. Bug报告
-                elif any(kw in message_lower for kw in ["bug", "问题", "错误", "异常", "失败", "修复"]):
-                    task_info = self.receive_request(message, request_type="bug")
-
-                # 6. 新需求
-                elif any(kw in message for kw in ["需要", "要", "添加", "新增", "功能", "需求"]):
-                    task_info = self.receive_request(message, request_type="feature")
-
-                # 7. 普通讨论
-                else:
-                    self.record(message, context="用户")
-            else:
-                # AI 消息：简单记录
-                self.record(message, context="AI")
-
-        # 保存状态
         self._save_state()
 
         return {
             "message_id": msg.id if msg else None,
             "session_id": self.sessions._active_session_id,
-            "sent": msg is not None,
-            "recorded": auto_record and self.project_state is not None,
             "task_info": task_info,
-            "action_result": action_result,  # 返回执行结果（如开发结果、状态等）
         }
 
     def switch_session(self, session_type: str) -> dict[str, Any]:
-        """
-        切换到指定类型的会话
-
-        不同类型的会话有独立的对话历史，互不干扰：
-        - development: 主开发对话
-        - product_manager: 产品经理对话
-        - project_manager: 项目经理对话
-        - architect: 架构师对话
-        - tester: 测试人员对话
-        - general: 通用对话
-
-        Args:
-            session_type: 会话类型
-
-        Returns:
-            切换结果
-
-        Examples:
-            # 切换到产品经理对话
-            harness.switch_session("product_manager")
-            harness.chat("登录功能需要支持哪些方式？")
-
-            # 切换回主开发对话
-            harness.switch_session("development")
-            harness.chat("继续实现登录功能...")
-        """
+        """切换到指定类型的会话"""
         type_map = {
             "development": SessionType.DEVELOPMENT,
             "product_manager": SessionType.PRODUCT_MANAGER,
             "project_manager": SessionType.PROJECT_MANAGER,
             "architect": SessionType.ARCHITECT,
             "tester": SessionType.TESTER,
-            "doc_writer": SessionType.DOC_WRITER,
             "general": SessionType.GENERAL,
         }
 
@@ -1322,221 +682,125 @@ class Harness:
             "session": session.get_summary() if session else None,
         }
 
-    def create_session(self, session_type: str, name: str = "") -> dict[str, Any]:
-        """
-        创建新会话
+    # ==================== 状态报告 ====================
 
-        Args:
-            session_type: 会话类型
-            name: 会话名称
+    def get_status(self) -> dict[str, Any]:
+        """获取整体状态"""
+        stats = self.memory.get_stats()
 
-        Returns:
-            创建的会话信息
-        """
-        type_map = {
-            "development": SessionType.DEVELOPMENT,
-            "product_manager": SessionType.PRODUCT_MANAGER,
-            "project_manager": SessionType.PROJECT_MANAGER,
-            "architect": SessionType.ARCHITECT,
-            "tester": SessionType.TESTER,
-            "doc_writer": SessionType.DOC_WRITER,
-            "general": SessionType.GENERAL,
+        return {
+            "project": self.project_name,
+            "team": {
+                "size": self._stats.team_size,
+                "members": self.coordinator.list_roles(),
+            },
+            "stats": self._stats.model_dump(),
+            "project_stats": stats["stats"],
+            "memory": stats["memory"],
+            "sessions": self.sessions.get_stats(),
+            "persistence": {
+                "enabled": self._persistent,
+                "workspace": self._workspace,
+            },
+            "current_task": self.memory.get_current_task(),
         }
 
-        st = type_map.get(session_type.lower(), SessionType.GENERAL)
-        session = self.sessions.create_session(st, name)
-
-        return {"created": True, "session": session.get_summary()}
-
-    def get_current_session(self) -> dict[str, Any] | None:
-        """
-        获取当前活动会话
-
-        Returns:
-            当前会话信息
-        """
-        session = self.sessions.get_active_session()
-        return session.get_summary() if session else None
-
-    def get_session_history(self, limit: int = 20) -> list[dict[str, Any]]:
-        """
-        获取当前会话的对话历史
-
-        Args:
-            limit: 限制消息数量
-
-        Returns:
-            消息列表
-        """
-        messages = self.sessions.get_conversation_history(limit=limit)
-        return [
-            {
-                "id": msg.id,
-                "role": msg.role.value,
-                "content": msg.content,
-                "timestamp": msg.timestamp,
-            }
-            for msg in messages
-        ]
-
-    def list_sessions(self) -> list[dict[str, Any]]:
-        """
-        列出所有会话
-
-        Returns:
-            会话列表
-        """
-        return self.sessions.list_sessions()
-
-    def get_session_report(self) -> str:
-        """
-        获取会话报告
-
-        Returns:
-            格式化的会话报告
-        """
-        sessions = self.list_sessions()
-
-        report_lines = [f"# {self.project_name} 会话报告\n"]
-        report_lines.append("## 所有会话\n")
-
-        for session in sessions:
-            active_mark = " (当前)" if session.get("is_active") else ""
-            report_lines.append(f"### {session['name']}{active_mark}")
-            report_lines.append(f"- 类型: {session['type']}")
-            report_lines.append(f"- 消息数: {session['message_count']}")
-            report_lines.append("")
-
-        return "\n".join(report_lines)
-
     def get_report(self) -> str:
-        """
-        获取项目报告
+        """获取项目报告"""
+        stats = self.memory.get_stats()
 
-        Returns:
-            格式化的报告字符串
-        """
-        status = self.get_status()
-
-        report = f"""
+        return f"""
 # {self.project_name} 项目报告
 
 ## 团队
-- 规模: {status['team']['size']} 人
+- 规模: {self._stats.team_size} 人
 
 ## 统计
-- 开发功能: {status['stats']['features_developed']} 个
-- 修复Bug: {status['stats']['bugs_fixed']} 个
-- 完成工作流: {status['stats']['workflows_completed']} 个
+- 功能总数: {stats['stats']['features_total']}
+- 已完成: {stats['stats']['features_completed']}
+- Bug总数: {stats['stats']['bugs_total']}
+- 已修复: {stats['stats']['bugs_fixed']}
+- 进度: {stats['stats']['progress']}%
 
-## 健康状态
-- 记忆系统: {status['memory_health']}
+## 记忆健康
+- Eden: {stats['memory']['eden_size']}
+- Old: {stats['memory']['old_size']}
 """
-        return report.strip()
+
+    def save(self) -> bool:
+        """手动保存当前工作状态"""
+        return self._save_state()
+
+    def reload(self) -> bool:
+        """重新加载项目状态"""
+        self.memory.reload()
+        return self._load_state()
 
     # ==================== 引导系统 ====================
 
     def is_first_time(self) -> bool:
-        """
-        检测是否首次使用
-
-        Returns:
-            True 如果是首次使用（没有完成引导）
-        """
+        """检测是否首次使用"""
         return self._guide.is_first_time()
 
     def start_onboarding(self) -> dict[str, Any]:
-        """
-        启动首次使用引导
-
-        引导流程包括:
-        1. 项目信息收集
-        2. 团队角色配置
-        3. 使用方式介绍
-        4. 快速上手示例
-        5. 项目初始化
-
-        Returns:
-            引导完成的配置信息
-        """
+        """启动首次使用引导"""
         config = self._guide.start(self)
-
-        # 保存状态
         self._save_state()
-
         return {
             "completed": True,
             "project_name": config.project_name,
-            "project_description": config.project_description,
             "tech_stack": config.tech_stack,
-            "team_config": config.team_config,
         }
 
-    def load_project_config(self) -> dict[str, Any] | None:
-        """
-        加载项目配置
-
-        Returns:
-            项目配置，如果没有返回 None
-        """
-        config = self._guide.load_config()
-        if config:
-            return {
-                "project_name": config.project_name,
-                "project_description": config.project_description,
-                "tech_stack": config.tech_stack,
-                "team_config": config.team_config,
-                "onboarding_completed": config.onboarding_completed,
-            }
-        return None
-
-    def show_help(self) -> None:
-        """
-        显示快速帮助信息
-        """
-        self._guide.show_quick_help()
-
     def welcome(self) -> str:
-        """
-        生成欢迎信息和使用提示
-
-        Returns:
-            格式化的欢迎信息
-        """
-        config = self.load_project_config()
-
-        if config and config.get("onboarding_completed"):
-            # 已完成引导，显示项目欢迎信息
-            return f"""
-欢迎回来，{config['project_name']}！
-
-项目状态:
-  - 团队规模: {self._stats.team_size} 人
-  - 开发功能: {self._stats.features_developed} 个
-  - 修复Bug: {self._stats.bugs_fixed} 个
-
-快速提示:
-  - 使用 harness.chat('你的需求') 开始对话
-  - 使用 harness.develop('功能') 快速开发
-  - 使用 harness.show_help() 查看更多帮助
-
-准备好继续开发了吗？
-"""
-        else:
-            # 首次使用，引导用户
-            return """
+        """生成欢迎信息"""
+        return f"""
 欢迎使用 py_ha！
 
-看起来你是第一次使用，让我帮你快速上手：
-  - 使用 harness.start_onboarding() 开始引导配置
-  - 使用 harness.show_help() 查看快速帮助
-  - 或直接使用 harness.develop('功能描述') 开始开发
+项目: {self.project_name}
 
-准备好了吗？开始你的 AI Agent 开发之旅吧！
+快速提示:
+  - 使用 harness.receive_request("需求") 接收请求
+  - 使用 harness.develop("功能") 快速开发
+  - 使用 harness.get_context_prompt() 获取上下文
 """
 
+    def get_init_prompt(self) -> str:
+        """
+        获取初始化提示（用于 Claude Code 对话初始化）
 
-# ==================== 便捷函数 ====================
+        返回完整的初始化指导和项目上下文，让 Claude Code 能够：
+        1. 理解 py_ha 的核心概念
+        2. 知道如何使用核心 API
+        3. 了解当前项目状态
+
+        Returns:
+            初始化提示字符串
+        """
+        # 获取基础上下文
+        context = self.get_context_prompt()
+
+        # 添加初始化说明
+        init_header = """
+# py_ha 初始化指南
+
+## 当前状态
+py_ha 已初始化完成，你可以直接使用以下 API 与项目交互。
+
+## 工作流程
+1. 用户提出需求 → 调用 `receive_request()`
+2. 执行开发任务 → 调用 `develop()` 或手动实现
+3. 完成任务 → 调用 `complete_task()`
+4. 每次对话开始 → 调用 `get_context_prompt()` 获取上下文
+
+## 重要提示
+- 所有操作自动持久化，重启后自动恢复
+- 使用 `harness.remember(key, value, important=True)` 存储重要知识
+- 使用 `harness.recall(key)` 获取存储的知识
+
+"""
+        return init_header + context
+
 
 def create_harness(
     project_name: str = "Default Project",
@@ -1544,24 +808,7 @@ def create_harness(
     persistent: bool = True,
     workspace: str = ".py_ha",
 ) -> Harness:
-    """
-    创建 Harness 实例
-
-    Args:
-        project_name: 项目名称
-        persistent: 是否持久化存储（默认 True）
-        workspace: 工作空间目录
-
-    Returns:
-        Harness 实例
-
-    Examples:
-        # 默认持久化
-        harness = create_harness("我的项目")
-
-        # 禁用持久化
-        harness = create_harness("我的项目", persistent=False)
-    """
+    """创建 Harness 实例"""
     return Harness(
         project_name=project_name,
         persistent=persistent,

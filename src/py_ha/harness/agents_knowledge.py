@@ -448,6 +448,204 @@ harness.record("自动识别类型并记录")
         """检查是否已初始化"""
         return self.agents_path.exists()
 
+    def sync_all_knowledge(self) -> dict[str, Any]:
+        """
+        同步所有知识文件
+
+        确保 AGENTS.md 为唯一源，其他文件自动派生。
+        解决知识分散和不一致问题。
+
+        Returns:
+            同步结果统计
+        """
+        results = {
+            "updated": [],
+            "skipped": [],
+            "errors": [],
+            "timestamp": time.time(),
+        }
+
+        if not self._knowledge:
+            self._load()
+
+        if not self._knowledge:
+            results["errors"].append("无法加载知识库")
+            return results
+
+        try:
+            # 1. 获取主知识内容
+            main_content = self._knowledge.main_content
+
+            # 2. 同步 knowledge/general/ 目录
+            general_dir = Path(self.workspace) / "knowledge" / "general"
+            general_dir.mkdir(parents=True, exist_ok=True)
+
+            # 提取技术栈信息
+            tech_stack = self._extract_section(main_content, "技术栈")
+            if tech_stack:
+                tech_path = general_dir / "tech_stack.md"
+                tech_path.write_text(f"# 技术栈\n\n{tech_stack}", encoding="utf-8")
+                results["updated"].append("knowledge/general/tech_stack.md")
+
+            # 提取项目描述
+            description = self._extract_section(main_content, "项目信息")
+            if description:
+                desc_path = general_dir / "description.md"
+                desc_path.write_text(f"# 项目描述\n\n{description}", encoding="utf-8")
+                results["updated"].append("knowledge/general/description.md")
+
+            # 3. 同步 agents/ 目录（角色专用知识）
+            for role in ["developer", "architect", "tester", "product_manager"]:
+                role_knowledge = self._generate_role_knowledge(main_content, role)
+                role_path = self.agents_dir / f"{role}.md"
+                role_path.write_text(role_knowledge, encoding="utf-8")
+                results["updated"].append(f"agents/{role}.md")
+
+            # 4. 同步 summaries/ 目录（知识摘要）
+            for section_name, section in self._knowledge.sections.items():
+                summary = self._generate_section_summary(section.content)
+                summary_path = self.summaries_dir / f"{section_name}.summary.md"
+                summary_path.write_text(summary, encoding="utf-8")
+                results["updated"].append(f"summaries/{section_name}.summary.md")
+
+            # 5. 更新知识索引
+            self._update_knowledge_index()
+            results["updated"].append("knowledge/index.md")
+
+            # 更新版本号
+            self._knowledge.last_updated = time.time()
+            self._knowledge.version += 1
+
+        except Exception as e:
+            results["errors"].append(f"同步失败: {str(e)}")
+
+        return results
+
+    def _extract_section(self, content: str, section_name: str) -> str:
+        """
+        从内容中提取特定章节
+
+        Args:
+            content: 文档内容
+            section_name: 章节名称
+
+        Returns:
+            提取的章节内容
+        """
+        import re
+
+        # 匹配章节标题及其内容
+        pattern = rf'##\s*{re.escape(section_name)}.*?\n(.*?)(?=\n##|\Z)'
+        match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+
+        if match:
+            return match.group(1).strip()
+
+        # 尝试匹配带星号的标题
+        pattern = rf'\*\*{re.escape(section_name)}\*\*:?\s*(.*?)(?=\n|\Z)'
+        match = re.search(pattern, content, re.IGNORECASE)
+
+        if match:
+            return match.group(1).strip()
+
+        return ""
+
+    def _generate_role_knowledge(self, main_content: str, role: str) -> str:
+        """
+        为特定角色生成知识文件
+
+        Args:
+            main_content: 主知识内容
+            role: 角色名称
+
+        Returns:
+            角色专用知识内容
+        """
+        role_descriptions = {
+            "developer": "开发者 - 专注于代码实现",
+            "architect": "架构师 - 专注于系统设计",
+            "tester": "测试员 - 专注于质量验证",
+            "product_manager": "产品经理 - 专注于需求管理",
+        }
+
+        # 获取该角色相关的章节
+        role_sections = self.get_knowledge_for_role(role)
+
+        content = f"""# {role_descriptions.get(role, role)} 知识文件
+
+> 此文件由 AGENTS.md 自动派生，请勿手动修改
+> 更新时间: {time.strftime('%Y-%m-%d %H:%M')}
+
+---
+
+{role_sections}
+
+---
+
+*自动生成于 {time.strftime('%Y-%m-%d %H:%M:%S')}*
+"""
+        return content
+
+    def _generate_section_summary(self, content: str, max_length: int = 200) -> str:
+        """
+        生成章节摘要
+
+        Args:
+            content: 章节内容
+            max_length: 最大长度
+
+        Returns:
+            摘要文本
+        """
+        # 移除 Markdown 格式
+        import re
+        text = re.sub(r'#+\s*', '', content)
+        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+        text = re.sub(r'`([^`]+)`', r'\1', text)
+        text = re.sub(r'\n+', ' ', text)
+
+        # 截断
+        if len(text) > max_length:
+            return text[:max_length].strip() + "..."
+
+        return text.strip()
+
+    def _update_knowledge_index(self) -> None:
+        """更新知识索引文件"""
+        index_path = Path(self.workspace) / "knowledge" / "index.md"
+
+        if not self._knowledge:
+            return
+
+        content = f"""# 知识库索引
+
+> 更新时间: {time.strftime('%Y-%m-%d %H:%M')}
+> 版本: {self._knowledge.version}
+
+## 知识文件列表
+
+### 主知识文件
+- [AGENTS.md](../AGENTS.md) - 项目核心知识
+
+### 通用知识 (knowledge/general/)
+- [tech_stack.md](general/tech_stack.md) - 技术栈信息
+- [description.md](general/description.md) - 项目描述
+
+### 角色知识 (agents/)
+- [developer.md](../agents/developer.md) - 开发者知识
+- [architect.md](../agents/architect.md) - 架构师知识
+- [tester.md](../agents/tester.md) - 测试员知识
+- [product_manager.md](../agents/product_manager.md) - 产品经理知识
+
+### 知识摘要 (summaries/)
+"""
+
+        for name, section in self._knowledge.sections.items():
+            content += f"- [{name}.summary.md](../summaries/{name}.summary.md) - {section.name} 摘要\n"
+
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(content, encoding="utf-8")
+
     def get_stats(self) -> dict[str, Any]:
         """获取统计信息"""
         if not self._knowledge:

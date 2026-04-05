@@ -1,6 +1,6 @@
 [project]
 name = "py-ha"
-version = "0.2.0"
+version = "0.5.0"
 description = "Python Harness for AI Agents - A Harness Engineering Framework with Role-Driven Collaboration"
 readme = "README.md"
 license = { text = "MIT" }
@@ -10,7 +10,7 @@ authors = [
 ]
 keywords = [
     "ai", "agent", "harness", "llm", "framework",
-    "jvm", "memory-management", "workflow", "mcp",
+    "jvm", "memory-management", "workflow",
     "claude", "developer-tools", "automation"
 ]
 classifiers = [
@@ -43,13 +43,9 @@ llm = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
 ]
-mcp = [
-    "mcp>=1.0.0",
-]
 
 [project.scripts]
 py-ha = "py_ha.cli:main"
-py-ha-mcp = "py_ha.mcp.server:main"
 
 [project.urls]
 Homepage = "https://github.com/py-ha/py-ha"

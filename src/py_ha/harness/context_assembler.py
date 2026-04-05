@@ -328,8 +328,8 @@ class ContextAssembler:
         )
 
         # 从项目状态获取更多信息
-        if self.harness.project_state:
-            info = self.harness.project_state.get_project_info()
+        if self.harness.memory:
+            info = self.harness.memory.get_project_info()
             knowledge.project_name = info.get("name", self.harness.project_name)
             knowledge.tech_stack = info.get("tech_stack", "")
 
@@ -350,13 +350,12 @@ class ContextAssembler:
         Returns:
             ActiveTaskContext 实例或 None
         """
-        if not self.harness.project_state:
+        if not self.harness.memory:
             return None
 
-        if not self.harness.project_state.has_active_task():
+        task_info = self.harness.memory.get_current_task()
+        if not task_info.get("task_id"):
             return None
-
-        task_info = self.harness.project_state.get_current_task()
 
         # 构建活跃任务上下文
         active_task = ActiveTaskContext(
@@ -367,16 +366,16 @@ class ContextAssembler:
         )
 
         # 获取相关文档摘要
-        from py_ha.project import DocumentType
+        from py_ha.memory.manager import DocumentType
 
-        req_doc = self.harness.project_state.get_document(
-            DocumentType.REQUIREMENTS, "project_manager", full=False
+        req_doc = self.harness.memory.get_document_summary(
+            DocumentType.REQUIREMENTS
         )
         if req_doc:
             active_task.related_requirements = req_doc[:500]
 
-        design_doc = self.harness.project_state.get_document(
-            DocumentType.DESIGN, "project_manager", full=False
+        design_doc = self.harness.memory.get_document_summary(
+            DocumentType.DESIGN
         )
         if design_doc:
             active_task.related_design = design_doc[:500]
@@ -423,8 +422,8 @@ class ContextAssembler:
                 current_tokens += self._estimate_tokens(task_section.content)
 
         # 4. 项目状态摘要
-        if self.harness.project_state and current_tokens < max_tokens * 0.8:
-            stats = self.harness.project_state.get_stats()
+        if self.harness.memory and current_tokens < max_tokens * 0.8:
+            stats = self.harness.memory.get_stats()["stats"]
             stats_section = ContextSection(
                 name="project_stats",
                 content=f"## 项目进度\n- 功能: {stats['features_completed']}/{stats['features_total']}\n- 进度: {stats['progress']}%",
@@ -520,8 +519,8 @@ class ContextAssembler:
             current_tokens += self._estimate_tokens(task_section.content)
 
         # 4. 项目状态
-        if self.harness.project_state:
-            stats = self.harness.project_state.get_stats()
+        if self.harness.memory:
+            stats = self.harness.memory.get_stats()["stats"]
             stats_content = f"""## 项目状态
 - 功能总数: {stats['features_total']}
 - 已完成: {stats['features_completed']}
@@ -537,10 +536,10 @@ class ContextAssembler:
             ))
 
         # 5. 所有文档摘要（如果有空间）
-        if self.harness.project_state and current_tokens < max_tokens * 0.7:
-            from py_ha.project import DocumentType
+        if self.harness.memory and current_tokens < max_tokens * 0.7:
+            from py_ha.memory.manager import DocumentType
             for doc_type in [DocumentType.REQUIREMENTS, DocumentType.PROGRESS]:
-                summary = self.harness.project_state.get_document_summary(doc_type)
+                summary = self.harness.memory.get_document_summary(doc_type)
                 if summary:
                     doc_section = ContextSection(
                         name=f"{doc_type}_summary",
@@ -567,12 +566,59 @@ class ContextAssembler:
         return "\n".join(parts)
 
     def _estimate_tokens(self, content: str) -> int:
-        """估算 Token 数"""
-        # 简化估算：中文约 1 token = 2 chars，英文约 1 token = 4 chars
+        """
+        估算 Token 数（增强版）
+
+        使用更精确的多语言估算方法:
+        - 英文: 约 1 token = 4 字符
+        - 中文: 约 1 token = 1.5 字符
+        - 日文/韩文: 约 1 token = 2 字符
+        - 代码: 约 1 token = 3 字符
+        - 标点符号: 约 1 token = 1 字符
+
+        Args:
+            content: 要估算的内容
+
+        Returns:
+            估算的 Token 数
+        """
         import re
+
+        if not content:
+            return 0
+
+        total_tokens = 0
+
+        # 分类统计字符
+        # 中文字符 (CJK 统一汉字)
         chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', content))
-        other_chars = len(content) - chinese_chars
-        return chinese_chars // 2 + other_chars // 4
+        # 日文字符 (平假名 + 片假名)
+        japanese_chars = len(re.findall(r'[\u3040-\u309f\u30a0-\u30ff]', content))
+        # 韩文字符
+        korean_chars = len(re.findall(r'[\uac00-\ud7af]', content))
+        # 数字
+        digits = len(re.findall(r'[0-9]', content))
+        # 标点符号和特殊字符
+        punctuation = len(re.findall(r'[^\w\s\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]', content))
+        # 剩余字符（主要是英文和代码）
+        other_chars = len(content) - chinese_chars - japanese_chars - korean_chars - digits - punctuation
+
+        # 计算各部分的 Token 数
+        # 中文: 约 1.5 字符/token
+        total_tokens += int(chinese_chars / 1.5)
+        # 日文: 约 2 字符/token
+        total_tokens += int(japanese_chars / 2)
+        # 韩文: 约 2 字符/token
+        total_tokens += int(korean_chars / 2)
+        # 数字: 约 0.5 字符/token (数字通常与其他字符组合)
+        total_tokens += int(digits / 2)
+        # 标点符号: 约 1 字符/token
+        total_tokens += punctuation
+        # 英文/代码: 约 4 字符/token
+        total_tokens += int(other_chars / 4)
+
+        # 确保至少返回 1
+        return max(total_tokens, 1) if content else 0
 
     def _extract_goal(self, content: str) -> str:
         """从内容中提取项目目标"""

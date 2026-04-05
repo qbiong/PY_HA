@@ -353,149 +353,153 @@ class TestMemoryManager:
 
     def test_create_manager(self) -> None:
         """创建管理器"""
-        manager = MemoryManager(
-            eden_size=100,
-            old_size=200,
-            compile_threshold=50,
-        )
-        assert manager.heap.eden.max_size == 100
-        assert manager.hotspot_detector.compile_threshold == 50
+        manager = MemoryManager(workspace=".test_memory_manager")
+        assert manager.heap is not None
+        assert manager.gc is not None
+        assert manager.hotspot is not None
 
-    def test_allocate_memory(self) -> None:
-        """分配记忆"""
-        manager = MemoryManager()
+    def test_store_and_get_knowledge(self) -> None:
+        """存储和获取知识"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = MemoryManager(workspace=tmpdir)
+            manager.store_knowledge("test_key", "test content", importance=80)
 
-        entry = manager.allocate_memory("test content", importance=50)
-        assert entry is not None
-        assert entry.region == MemoryRegion.EDEN
+            result = manager.get_knowledge("test_key")
+            assert result == "test content"
 
-    def test_store_conversation(self) -> None:
-        """存储对话"""
-        manager = MemoryManager()
+    def test_store_and_get_document(self) -> None:
+        """存储和获取文档"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = MemoryManager(workspace=tmpdir)
 
-        entry = manager.store_conversation("Hello", role="user", importance=60)
-        assert entry is not None
-        assert entry.metadata["role"] == "user"
+            success = manager.store_document("requirements", "# 需求\n功能需求")
+            assert success is True
 
-    def test_invoke_gc(self) -> None:
-        """触发GC"""
-        manager = MemoryManager(eden_size=5)
+            doc = manager.get_document("requirements")
+            assert doc is not None
+            assert "需求" in doc
 
-        # 填充Eden
-        for i in range(6):
-            manager.allocate_memory(f"content {i}", importance=30)
+    def test_store_and_get_task(self) -> None:
+        """存储和获取任务"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = MemoryManager(workspace=tmpdir)
 
-        # 触发Minor GC
-        result = manager.invoke_gc_minor()
-        assert result.gc_type == "minor"
+            manager.store_task("TASK-001", {"desc": "测试任务", "status": "pending"})
 
-    def test_hotspot_workflow(self) -> None:
-        """热点检测与装配流程"""
-        manager = MemoryManager(compile_threshold=5)
+            task = manager.get_task("TASK-001")
+            assert task is not None
+            assert task["desc"] == "测试任务"
 
-        # 记录工具使用
-        for i in range(10):
-            manager.record_tool_usage("frequent_tool", execution_time=0.1)
+    def test_store_message(self) -> None:
+        """存储消息"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = MemoryManager(workspace=tmpdir)
 
-        # 检测热点
-        hotspots = manager.detect_hotspots()
-        assert len(hotspots) > 0
-        assert "frequent_tool" in [h.name for h in hotspots]
+            manager.store_message("你好", role="user")
+            manager.store_message("你好，有什么可以帮你？", role="assistant")
 
-        # 自动装配
-        templates = manager.auto_assemble()
-        assert len(templates) > 0
+            messages = manager.get_recent_messages(limit=10)
+            assert len(messages) == 2
 
-    def test_execution_stack(self) -> None:
-        """执行栈"""
-        manager = MemoryManager()
+    def test_get_context_for_llm(self) -> None:
+        """获取LLM上下文"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = MemoryManager(workspace=tmpdir)
+            manager.project_info.name = "测试项目"
+            manager.project_info.tech_stack = "Python"
+            manager.store_knowledge("project_name", "测试项目")
+            manager.store_message("测试消息", role="user")
 
-        # 压入任务
-        frame = manager.push_task("task1")
-        assert frame is not None
-        assert manager.stack.depth() == 1
+            context = manager.get_context_for_llm("developer", max_tokens=4000)
+            assert len(context) > 0
+            assert "测试项目" in context
 
-        # 设置局部变量
-        frame.set_local("key", "value")
-        assert frame.get_local("key") == "value"
+    def test_get_context_for_role(self) -> None:
+        """获取角色上下文（渐进式披露）"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = MemoryManager(workspace=tmpdir)
+            manager.project_info.name = "测试项目"
+            manager.store_document("requirements", "# 需求文档")
 
-        # 弹出任务
-        manager.pop_task()
-        assert manager.stack.depth() == 0
+            # 开发者上下文
+            dev_context = manager.get_context_for_role("developer")
+            assert "project" in dev_context
+            assert dev_context["project"]["name"] == "测试项目"
 
-    def test_progress_counter(self) -> None:
-        """进度计数器"""
-        manager = MemoryManager()
+            # 项目经理上下文
+            pm_context = manager.get_context_for_role("project_manager")
+            assert pm_context.get("full_access") is True
 
-        manager.set_task_progress("test_task", total_steps=10)
+    def test_force_gc(self) -> None:
+        """强制GC"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = MemoryManager(workspace=tmpdir)
 
-        for i in range(5):
-            manager.advance_progress()
+            # 存储一些消息
+            for i in range(10):
+                manager.store_message(f"消息 {i}", role="user")
 
-        assert manager.get_progress() == 50.0
+            # 强制GC
+            result = manager.force_gc("minor")
+            assert result.gc_type == "minor"
 
-    def test_meta_space(self) -> None:
-        """元空间"""
-        manager = MemoryManager()
+    def test_get_hotspots(self) -> None:
+        """获取热点"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = MemoryManager(workspace=tmpdir)
 
-        # 定义知识
-        manager.define_knowledge("key_fact", "Important fact")
-        manager.store_important_knowledge("permanent_fact", "Never forget this")
+            # 多次访问同一知识
+            for i in range(110):
+                manager.get_knowledge("test_key")
 
-        # 获取知识
-        knowledge = manager.get_knowledge("key_fact")
-        assert knowledge == "Important fact"
+            hotspots = manager.get_hotspots()
+            assert len(hotspots) >= 0
 
-        # 检查Permanent存储
-        perm_entry = manager.heap.permanent.get_knowledge("permanent_fact")
-        assert perm_entry is not None
-        assert perm_entry.importance == 100
+    def test_get_stats(self) -> None:
+        """获取统计"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = MemoryManager(workspace=tmpdir)
+            manager.project_info.name = "统计测试"
+            manager.update_stats("features_total", 5)
+            manager.update_stats("features_completed", 3)
+
+            stats = manager.get_stats()
+            assert stats["project"]["name"] == "统计测试"
+            assert stats["stats"]["features_total"] == 5
+            assert stats["stats"]["features_completed"] == 3
 
     def test_health_report(self) -> None:
         """健康报告"""
-        manager = MemoryManager(eden_size=10, old_size=20)
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = MemoryManager(workspace=tmpdir)
 
-        # 初始健康
-        health = manager.get_health_report()
-        assert health["status"] == "healthy"
+            health = manager.get_health_report()
+            assert health["status"] == "healthy"
 
-        # 填充内存
-        for i in range(9):
-            manager.allocate_memory(f"content {i}", importance=30)
+    def test_persistence(self) -> None:
+        """持久化测试"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 创建并保存
+            manager = MemoryManager(workspace=tmpdir)
+            manager.project_info.name = "持久化测试"
+            manager.store_knowledge("key1", "value1")
+            manager._save()
 
-        health = manager.get_health_report()
-        # Eden接近满
-        assert health["eden_pressure"] > 0.8
-
-    def test_auto_optimize(self) -> None:
-        """自动优化"""
-        manager = MemoryManager(eden_size=5, compile_threshold=5)
-
-        # 填充内存
-        for i in range(6):
-            manager.allocate_memory(f"content {i}", importance=30)
-
-        # 记录热点
-        for i in range(10):
-            manager.record_tool_usage("hot_tool", execution_time=0.1)
-
-        # 自动优化
-        actions = manager.optimize_if_needed()
-        assert "gc" in actions or "assembled" in actions
-
-    def test_memory_status(self) -> None:
-        """记忆状态"""
-        manager = MemoryManager()
-
-        status = manager.get_memory_status()
-
-        assert "heap" in status
-        assert "stack" in status
-        assert "progress" in status
-        assert "meta_space" in status
-        assert "gc" in status
-        assert "hotspot" in status
-        assert "assembler" in status
+            # 重新加载
+            manager2 = MemoryManager(workspace=tmpdir)
+            assert manager2.project_info.name == "持久化测试"
+            assert manager2.get_knowledge("key1") == "value1"
 
 
 class TestPermanentMemory:

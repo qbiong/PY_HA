@@ -31,7 +31,7 @@ from py_ha.roles.base import (
     SkillCategory,
     TaskType,
 )
-from py_ha.project.state import DocumentType
+from py_ha.memory.manager import DocumentType
 
 
 class ProductManagerContext(BaseModel):
@@ -90,7 +90,7 @@ class ProductManager(AgentRole):
         设置项目状态管理器
 
         Args:
-            state_manager: ProjectStateManager 实例
+            state_manager: MemoryManager 实例
         """
         self._state_manager = state_manager
 
@@ -234,11 +234,7 @@ class ProductManager(AgentRole):
             需求文档内容
         """
         if self._state_manager:
-            return self._state_manager.get_document(
-                DocumentType.REQUIREMENTS,
-                "product_manager",
-                full=True,
-            ) or ""
+            return self._state_manager.get_document(DocumentType.REQUIREMENTS) or ""
         return self._pm_context.requirements
 
     def update_requirements(self, new_content: str, change_summary: str = "") -> bool:
@@ -253,11 +249,9 @@ class ProductManager(AgentRole):
             是否成功
         """
         if self._state_manager:
-            success = self._state_manager.update_document(
+            success = self._state_manager.store_document(
                 DocumentType.REQUIREMENTS,
                 new_content,
-                "product_manager",
-                change_summary,
             )
             if success:
                 self._pm_context.requirements = new_content

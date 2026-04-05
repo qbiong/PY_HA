@@ -41,7 +41,7 @@ from py_ha.roles.base import (
     SkillCategory,
     TaskType,
 )
-from py_ha.project.state import ProjectStateManager, DocumentType
+from py_ha.memory.manager import MemoryManager, DocumentType
 
 
 class TaskAssignment(BaseModel):
@@ -64,7 +64,7 @@ class ProjectManager(AgentRole):
     核心职责:
     1. 维护项目所有文档
     2. 调度其他角色执行任务
-    3. 管理项目状态和进度
+    3. 理项目状态和进度
     4. 提供渐进式信息披露
 
     Harness角色定义:
@@ -83,7 +83,7 @@ class ProjectManager(AgentRole):
         role_id: str = "pm_1",
         name: str = "项目经理",
         context: RoleContext | None = None,
-        state_manager: ProjectStateManager | None = None,
+        state_manager: MemoryManager | None = None,
     ) -> None:
         super().__init__(role_id=role_id, name=name, context=context)
         self.state = state_manager
@@ -269,33 +269,31 @@ class ProjectManager(AgentRole):
         # 根据角色类型更新对应文档
         if role_type == "developer":
             # 开发者产出更新开发日志
-            current = self.state.get_document(DocumentType.DEVELOPMENT, "project_manager") or ""
+            current = self.state.get_document(DocumentType.DEVELOPMENT) or ""
             new_content = current + f"\n\n## {time.strftime('%Y-%m-%d %H:%M')}\n{artifact.get('code', '')}"
-            self.state.update_document(DocumentType.DEVELOPMENT, new_content, "developer")
+            self.state.store_document(DocumentType.DEVELOPMENT, new_content)
 
         elif role_type == "product_manager":
             # 产品经理产出更新需求文档
             if "requirements" in artifact:
-                self.state.update_document(
+                self.state.store_document(
                     DocumentType.REQUIREMENTS,
                     artifact["requirements"],
-                    "product_manager",
                 )
 
         elif role_type == "architect":
             # 架构师产出更新设计文档
             if "design" in artifact:
-                self.state.update_document(
+                self.state.store_document(
                     DocumentType.DESIGN,
                     artifact["design"],
-                    "architect",
                 )
 
         elif role_type == "tester":
             # 测试人员产出更新测试报告
-            current = self.state.get_document(DocumentType.TESTING, "project_manager") or ""
+            current = self.state.get_document(DocumentType.TESTING) or ""
             new_content = current + f"\n\n## {time.strftime('%Y-%m-%d %H:%M')}\n{artifact.get('report', '')}"
-            self.state.update_document(DocumentType.TESTING, new_content, "tester")
+            self.state.store_document(DocumentType.TESTING, new_content)
 
         # 更新进度报告
         self._update_progress()
@@ -326,7 +324,7 @@ class ProjectManager(AgentRole):
             status_emoji = "✅" if a.status == "completed" else "🔄"
             progress_content += f"\n{status_emoji} [{a.assigned_to}] {a.description[:50]}..."
 
-        self.state.update_document(DocumentType.PROGRESS, progress_content, "project_manager")
+        self.state.store_document(DocumentType.PROGRESS, progress_content)
 
     # ==================== 渐进式披露 ====================
 
@@ -399,7 +397,9 @@ class ProjectManager(AgentRole):
         """
         if not self.state:
             return None
-        return self.state.get_document(doc_type, "project_manager", full)
+        if full:
+            return self.state.get_document(doc_type)
+        return self.state.get_document_summary(doc_type)
 
     def update_document(self, doc_type: str, content: str, summary: str = "") -> bool:
         """
@@ -415,16 +415,7 @@ class ProjectManager(AgentRole):
         """
         if not self.state:
             return False
-
-        success = self.state.update_document(doc_type, content, "project_manager")
-
-        # 更新摘要
-        if success and summary:
-            doc = self.state.documents.get(doc_type)
-            if doc:
-                doc.summary = summary
-
-        return success
+        return self.state.store_document(doc_type, content)
 
     # ==================== 内部方法 ====================
 
@@ -496,7 +487,7 @@ def create_project_manager(
     pm_id: str = "pm_1",
     name: str = "项目经理",
     context: RoleContext | None = None,
-    state_manager: ProjectStateManager | None = None,
+    state_manager: MemoryManager | None = None,
 ) -> ProjectManager:
     """创建项目经理实例"""
     return ProjectManager(

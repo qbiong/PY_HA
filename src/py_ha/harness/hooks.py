@@ -160,7 +160,7 @@ class SecurityHook(BaseHook):
     """
     安全检查 Hook
 
-    检查代码安全性问题
+    检查代码安全性问题，支持多语言 (Python, Java, Kotlin, JavaScript, TypeScript)
     """
 
     name = "security"
@@ -168,26 +168,109 @@ class SecurityHook(BaseHook):
     mode = HookMode.BLOCKING
     priority = 90
 
-    # 高危模式
+    # 多语言敏感信息模式
+    LANGUAGE_PATTERNS = {
+        "python": {
+            "sensitive": [
+                r'password\s*=\s*["\'][^"\']+["\']',
+                r'api_key\s*=\s*["\'][^"\']+["\']',
+                r'secret\s*=\s*["\'][^"\']+["\']',
+                r'token\s*=\s*["\'][^"\']+["\']',
+                r'credential\s*=\s*["\'][^"\']+["\']',
+            ],
+            "high_risk": ["password", "api_key", "secret", "token", "credential"],
+        },
+        "java": {
+            "sensitive": [
+                r'String\s+(password|apiKey|secret|token)\s*=\s*"[^"]+"',
+                r'private\s+String\s+\w*[Pp]assword\w*\s*=\s*"[^"]+"',
+                r'private\s+String\s+\w*[Tt]oken\w*\s*=\s*"[^"]+"',
+                r'@Value\s*\(["\'][^"\']*(password|secret|token|key)["\']',
+            ],
+            "high_risk": ["password", "apiKey", "secret", "token", "credential"],
+        },
+        "kotlin": {
+            "sensitive": [
+                r'val\s+(password|apiKey|secret|token)\s*=\s*"[^"]+"',
+                r'private\s+val\s+\w*[Pp]assword\w*\s*=',
+                r'private\s+val\s+\w*[Tt]oken\w*\s*=',
+                r'const\s+val\s+\w*[Kk]ey\w*\s*=\s*"[^"]+"',
+            ],
+            "high_risk": ["password", "apiKey", "secret", "token", "credential"],
+        },
+        "javascript": {
+            "sensitive": [
+                r'(const|let|var)\s+(password|apiKey|secret|token)\s*=\s*["\'][^"\']+["\']',
+                r'process\.env\.\w*(PASSWORD|SECRET|TOKEN|KEY)',
+            ],
+            "high_risk": ["password", "apiKey", "secret", "token", "credential", "PRIVATE_KEY"],
+        },
+        "typescript": {
+            "sensitive": [
+                r'(const|let|var)\s+(password|apiKey|secret|token)\s*:\s*string\s*=\s*["\'][^"\']+["\']',
+                r'process\.env\.\w*(PASSWORD|SECRET|TOKEN|KEY)',
+            ],
+            "high_risk": ["password", "apiKey", "secret", "token", "credential"],
+        },
+    }
+
+    # 通用高危模式（所有语言）
     HIGH_RISK_PATTERNS = [
         "password",
         "secret",
         "api_key",
         "token",
         "credential",
+        "private_key",
     ]
 
-    # 硬编码敏感信息模式
+    # 默认敏感信息模式（向后兼容）
     SENSITIVE_PATTERNS = [
         r'password\s*=\s*"[^"]+"',
         r'api_key\s*=\s*"[^"]+"',
         r'secret\s*=\s*"[^"]+"',
     ]
 
+    def __init__(self, language: str = "python") -> None:
+        """
+        初始化安全检查 Hook
+
+        Args:
+            language: 目标语言 (python, java, kotlin, javascript, typescript)
+        """
+        self.language = language.lower()
+
+    def detect_language(self, file_path: str) -> str:
+        """
+        根据文件扩展名检测语言
+
+        Args:
+            file_path: 文件路径
+
+        Returns:
+            语言名称
+        """
+        import os
+        ext_map = {
+            ".py": "python",
+            ".java": "java",
+            ".kt": "kotlin",
+            ".kts": "kotlin",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+        }
+        ext = os.path.splitext(file_path)[1].lower() if file_path else ""
+        return ext_map.get(ext, self.language)
+
     def check(self, context: dict[str, Any]) -> HookResult:
         """检查安全性"""
+        import re
+        import os
+
         code = context.get("code", "")
         content = context.get("content", "")
+        file_path = context.get("file_path", context.get("path", ""))
 
         target = code or content
         if not target:
@@ -196,17 +279,39 @@ class SecurityHook(BaseHook):
         errors = []
         warnings = []
 
-        import re
+        # 检测语言
+        detected_lang = self.detect_language(file_path)
 
-        # 检查硬编码敏感信息
-        for pattern in self.SENSITIVE_PATTERNS:
-            if re.search(pattern, target, re.IGNORECASE):
-                errors.append(f"发现硬编码敏感信息: {pattern}")
+        # 获取该语言的敏感模式
+        lang_patterns = self.LANGUAGE_PATTERNS.get(detected_lang, self.LANGUAGE_PATTERNS["python"])
 
-        # 检查敏感关键词
-        for keyword in self.HIGH_RISK_PATTERNS:
-            if keyword in target.lower() and "=" in target:
-                warnings.append(f"可能包含敏感信息: {keyword}")
+        # 检查语言特定的硬编码敏感信息
+        for pattern in lang_patterns["sensitive"]:
+            try:
+                if re.search(pattern, target, re.IGNORECASE | re.MULTILINE):
+                    errors.append(f"[{detected_lang}] 发现硬编码敏感信息: {pattern}")
+            except re.error:
+                pass
+
+        # 检查高危关键词
+        for keyword in lang_patterns["high_risk"]:
+            if keyword.lower() in target.lower():
+                # 检查是否有赋值语句
+                if "=" in target or ":" in target:
+                    warnings.append(f"可能包含敏感信息: {keyword}")
+
+        # 检查通用危险模式
+        for pattern in self.HIGH_RISK_PATTERNS:
+            if pattern.lower() in target.lower():
+                # 检查是否在注释中
+                lines = target.split('\n')
+                for i, line in enumerate(lines):
+                    if pattern.lower() in line.lower():
+                        # 简单判断是否在注释中
+                        stripped = line.strip()
+                        if not stripped.startswith('#') and not stripped.startswith('//') and not stripped.startswith('*'):
+                            if '=' in line or ':' in line:
+                                warnings.append(f"第 {i+1} 行: 可能包含敏感配置 '{pattern}'")
 
         return self._create_result(len(errors) == 0, errors, warnings)
 

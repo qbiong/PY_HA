@@ -12,7 +12,7 @@ A Harness Engineering Framework for AI Agent Collaboration
 - 一键执行: 快速完成功能开发/Bug修复
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 # 主入口
 from py_ha.engine import Harness, create_harness
@@ -61,6 +61,13 @@ from py_ha.memory import (
     GarbageCollector,
     HotspotDetector,
     AutoAssembler,
+    # 文档系统
+    DocumentType,
+    DOCUMENT_OWNERSHIP,
+    DOCUMENT_REGION_MAP,
+    REGION_LOAD_STRATEGY,
+    get_document_region,
+    get_region_load_strategy,
 )
 
 # Storage Module - 轻量化存储
@@ -77,22 +84,6 @@ from py_ha.guide import (
     OnboardingGuide,
     ProjectConfig,
     create_guide,
-)
-
-# Project Module - 项目管理与渐进式披露
-from py_ha.project import (
-    ProjectStateManager,
-    ProjectDocument,
-    ProjectInfo,
-    ProjectStats,
-    DocumentType,
-    create_project_state,
-    # JVM风格区域映射
-    MemoryRegion,
-    DOCUMENT_REGION_MAP,
-    REGION_LOAD_STRATEGY,
-    get_document_region,
-    get_region_load_strategy,
 )
 
 # Harness Module - 核心能力
@@ -114,13 +105,9 @@ from py_ha.harness import (
     TestPassHook,
     FormatHook,
     create_default_hooks,
-    # Context Engine
-    ContextEngine,
-    ContextLayer,
-    CompressionResult,
-    SummarizationResult,
-    ContextRotDetector,
-    create_context_engine,
+    # HumanLoop
+    HumanLoop,
+    ApprovalRequest,
     # Context Assembler
     ContextAssembler,
     ContextSection,
@@ -168,6 +155,13 @@ __all__ = [
     "GarbageCollector",
     "HotspotDetector",
     "AutoAssembler",
+    # Memory - 文档系统
+    "DocumentType",
+    "DOCUMENT_OWNERSHIP",
+    "DOCUMENT_REGION_MAP",
+    "REGION_LOAD_STRATEGY",
+    "get_document_region",
+    "get_region_load_strategy",
     # Storage
     "StorageManager",
     "StorageType",
@@ -179,19 +173,6 @@ __all__ = [
     "OnboardingGuide",
     "ProjectConfig",
     "create_guide",
-    # Project
-    "ProjectStateManager",
-    "ProjectDocument",
-    "ProjectInfo",
-    "ProjectStats",
-    "DocumentType",
-    "create_project_state",
-    # JVM风格区域映射
-    "MemoryRegion",
-    "DOCUMENT_REGION_MAP",
-    "REGION_LOAD_STRATEGY",
-    "get_document_region",
-    "get_region_load_strategy",
     # Harness - AGENTS Knowledge
     "AgentsKnowledgeManager",
     "KnowledgeSection",
@@ -209,13 +190,9 @@ __all__ = [
     "TestPassHook",
     "FormatHook",
     "create_default_hooks",
-    # Harness - Context Engine
-    "ContextEngine",
-    "ContextLayer",
-    "CompressionResult",
-    "SummarizationResult",
-    "ContextRotDetector",
-    "create_context_engine",
+    # Harness - HumanLoop
+    "HumanLoop",
+    "ApprovalRequest",
     # Harness - Context Assembler
     "ContextAssembler",
     "ContextSection",
