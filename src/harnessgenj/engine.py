@@ -995,15 +995,27 @@ class Harness:
         # 自动处理用户请求（使用增强的意图识别）
         task_info = None
         intent_result = None
+        response = None
         if auto_record and role == "user":
             # 使用意图识别路由器
             intent_result = self._intent_router.identify(message)
 
-            # 根据意图类型处理
+            # 根据意图类型处理（增强：所有类型都有处理）
             if intent_result.intent_type == IntentType.DEVELOPMENT:
                 task_info = self.receive_request(message, request_type="feature")
+                response = f"已创建开发任务 {task_info.get('task_id', 'unknown')}，优先级 {task_info.get('priority', 'P1')}。正在安排开发..."
             elif intent_result.intent_type == IntentType.BUGFIX:
                 task_info = self.receive_request(message, request_type="bug")
+                response = f"已创建 Bug 修复任务 {task_info.get('task_id', 'unknown')}，优先级 P0。正在安排修复..."
+            elif intent_result.intent_type == IntentType.INQUIRY:
+                # 问题咨询：尝试回答或返回相关信息
+                response = self._handle_inquiry_intent(message, intent_result)
+            elif intent_result.intent_type == IntentType.MANAGEMENT:
+                # 项目管理：返回项目状态
+                response = self._handle_management_intent(message, intent_result)
+            else:
+                # 未知意图：尝试理解并引导用户
+                response = self._handle_unknown_intent(message)
 
         self._save_state()
 
@@ -1012,6 +1024,7 @@ class Harness:
             "session_id": self.sessions._active_session_id,
             "task_info": task_info,
             "intent": intent_result.model_dump() if intent_result else None,
+            "response": response,  # 新增：对话响应
         }
 
     def analyze_intent(self, message: str) -> IntentResult:
@@ -1494,6 +1507,191 @@ HarnessGenJ 已初始化完成，你可以直接使用以下 API 与项目交互
     def disable_tdd(self) -> None:
         """禁用 TDD 工作流"""
         self._tdd_workflow = None
+
+    # ==================== 智能对话处理 ====================
+
+    def _handle_inquiry_intent(
+        self,
+        message: str,
+        intent_result: IntentResult,
+    ) -> str:
+        """
+        处理问题咨询意图
+
+        Args:
+            message: 用户消息
+            intent_result: 意图识别结果
+
+        Returns:
+            响应文本
+        """
+        # 提取实体信息
+        entities = {e.name: e.value for e in intent_result.entities}
+
+        # 检查是否询问项目状态
+        if "进度" in message or "状态" in message:
+            stats = self.memory.get_stats()
+            return f"""
+项目当前状态：
+- 功能总数: {stats['stats']['features_total']}
+- 已完成: {stats['stats']['features_completed']}
+- Bug总数: {stats['stats']['bugs_total']}
+- 已修复: {stats['stats']['bugs_fixed']}
+- 进度: {stats['stats']['progress']}%
+"""
+
+        # 检查是否询问技术栈
+        if "技术栈" in message or "技术" in message:
+            tech_stack = self.memory.project_info.tech_stack or "未配置"
+            return f"当前项目技术栈: {tech_stack}"
+
+        # 检查是否询问团队
+        if "团队" in message or "成员" in message:
+            team = self.coordinator.list_roles()
+            if team:
+                members = "\n".join([f"- {m['name']} ({m['role_type']})" for m in team])
+                return f"当前团队成员:\n{members}"
+            return "团队尚未组建，请使用 setup_team() 方法组建团队"
+
+        # 检查是否询问特定文档
+        doc_types = ["需求", "设计", "开发", "测试", "进度"]
+        for doc_type in doc_types:
+            if doc_type in message:
+                doc = self.memory.get_document(doc_type.lower())
+                if doc:
+                    # 返回摘要（避免过长）
+                    lines = doc.split("\n")[:10]
+                    summary = "\n".join(lines)
+                    return f"{doc_type}文档摘要:\n{summary}\n\n（如需查看完整内容，请使用 get_document('{doc_type.lower()}')"
+                return f"暂无{doc_type}文档"
+
+        # 通用咨询：返回项目信息
+        project_name = self.project_name
+        description = self.memory.project_info.description or "暂无描述"
+        return f"""
+项目: {project_name}
+描述: {description[:100]}
+您可以使用以下命令：
+- develop("功能描述") - 开发新功能
+- fix_bug("bug描述") - 修复Bug
+- get_status() - 查看完整状态
+"""
+
+    def _handle_management_intent(
+        self,
+        message: str,
+        intent_result: IntentResult,
+    ) -> str:
+        """
+        处理项目管理意图
+
+        Args:
+            message: 用户消息
+            intent_result: 意图识别结果
+
+        Returns:
+            响应文本
+        """
+        # 检查是否需要生成报告
+        if "报告" in message or "统计" in message:
+            return self.get_report()
+
+        # 检查是否询问进度
+        if "进度" in message:
+            current_task = self.memory.get_current_task()
+            if current_task:
+                return f"当前任务: {current_task.get('request', 'unknown')}\n状态: {current_task.get('status', 'pending')}"
+            return "当前无进行中的任务"
+
+        # 检查是否需要资源调配
+        if "资源" in message or "安排" in message:
+            team = self.coordinator.list_roles()
+            if not team:
+                return "团队尚未组建，请先组建团队再进行资源调配"
+            return f"当前团队规模: {len(team)} 人\n可使用 setup_team() 调整团队配置"
+
+        # 默认返回项目状态
+        return self.get_report()
+
+    def _handle_unknown_intent(self, message: str) -> str:
+        """
+        处理未知意图
+
+        Args:
+            message: 用户消息
+
+        Returns:
+            响应文本
+        """
+        # 尝试从记忆中搜索相关信息
+        relevant_knowledge = self._search_relevant_knowledge(message)
+
+        if relevant_knowledge:
+            return f"根据项目记录，找到相关信息:\n{relevant_knowledge}\n\n如果这不是您想要的，请尝试更具体地描述您的需求，例如:\n- '我需要一个XX功能'\n- 'XX页面报错，需要修复'\n- '查看项目进度'"
+
+        # 返回引导信息
+        return """
+我无法完全理解您的请求。您可以尝试以下方式：
+
+1. **开发功能**: "我需要一个购物车功能"
+2. **修复Bug**: "支付页面报错，无法完成支付"
+3. **查看进度**: "项目进度如何？"
+4. **询问信息**: "当前技术栈是什么？"
+
+或者直接使用 API：
+- harness.develop("功能描述")
+- harness.fix_bug("问题描述")
+- harness.get_status()
+"""
+
+    def _search_relevant_knowledge(self, message: str) -> str | None:
+        """
+        从记忆中搜索与消息相关的知识
+
+        Args:
+            message: 用户消息
+
+        Returns:
+            相关知识内容，如果没有找到返回 None
+        """
+        # 提取关键词
+        keywords = []
+        for word in message.split():
+            if len(word) >= 2:
+                keywords.append(word)
+
+        if not keywords:
+            return None
+
+        # 搜索热点知识
+        try:
+            hotspots = self.memory.hotspot.detect_hotspots()
+            for hotspot in hotspots[:5]:
+                key = hotspot.name
+                content = self.memory.get_knowledge(key)
+                if content:
+                    # 检查关键词匹配
+                    for kw in keywords:
+                        if kw in content or kw in key:
+                            return content[:200]
+        except Exception:
+            pass
+
+        # 回退：搜索所有知识
+        try:
+            # 尝试从 heap 中搜索
+            heap_items = self.memory.heap.list_items()
+            for item in heap_items[:10]:
+                key = item.get("key", "")
+                content = self.memory.get_knowledge(key)
+                if content:
+                    for kw in keywords:
+                        if kw in content or kw in key:
+                            return content[:200]
+        except Exception:
+            pass
+
+        return None
 
     def _develop_with_tdd(
         self,

@@ -135,6 +135,20 @@ from harnessgenj.quality import (
     FailurePattern,
 )
 
+# Maintenance Module - 主动文档维护
+from harnessgenj.maintenance import (
+    RequirementDetector,
+    DetectedRequirement,
+    RequirementType,
+    DetectionSource,
+    DocumentMaintenanceManager,
+    DocumentUpdate,
+    TeamNotification,
+    ConfirmationManager,
+    ConfirmationStatus,
+    PendingConfirmation,
+)
+
 __all__ = [
     # 主入口
     "Harness",
@@ -232,4 +246,15 @@ __all__ = [
     "IssueRecord",
     "QualityTracker",
     "FailurePattern",
+    # Maintenance - 主动文档维护
+    "RequirementDetector",
+    "DetectedRequirement",
+    "RequirementType",
+    "DetectionSource",
+    "DocumentMaintenanceManager",
+    "DocumentUpdate",
+    "TeamNotification",
+    "ConfirmationManager",
+    "ConfirmationStatus",
+    "PendingConfirmation",
 ]

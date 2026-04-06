@@ -64,6 +64,8 @@ class IntentResult(BaseModel):
     priority: str = Field(default="P2", description="建议优先级")
     reason: str = Field(default="", description="识别原因")
     original_message: str = Field(default="", description="原始消息")
+    suggested_response: str = Field(default="", description="建议的响应（用于对话引导）")
+    action_hint: str = Field(default="", description="下一步行动提示")
 
 
 class IntentRouter:
@@ -233,6 +235,8 @@ class IntentRouter:
             priority=self.PRIORITY_MAP[best_intent],
             reason="; ".join(matched_reasons.get(best_intent, ["默认匹配"])),
             original_message=message,
+            suggested_response=self._get_suggested_response(best_intent, message, entities),
+            action_hint=self._get_action_hint(best_intent),
         )
 
     def _extract_entities(self, message: str, intent_type: IntentType) -> list[ExtractedEntity]:
@@ -303,6 +307,71 @@ class IntentRouter:
             IntentType.UNKNOWN: "未知意图 - 需要进一步确认",
         }
         return descriptions.get(intent_type, "未知意图")
+
+    def _get_suggested_response(
+        self,
+        intent_type: IntentType,
+        message: str,
+        entities: list[ExtractedEntity],
+    ) -> str:
+        """
+        根据意图生成建议的响应
+
+        Args:
+            intent_type: 意图类型
+            message: 原始消息
+            entities: 提取的实体
+
+        Returns:
+            建议的响应文本
+        """
+        # 提取实体为字典
+        entity_dict = {e.name: e.value for e in entities}
+
+        if intent_type == IntentType.DEVELOPMENT:
+            feature = entity_dict.get("feature_name", "该功能")
+            return f"好的，我将为您开发 {feature}。正在创建任务并安排开发..."
+
+        elif intent_type == IntentType.BUGFIX:
+            issue = entity_dict.get("issue_description", message[:30])
+            return f"发现问题：{issue}。正在创建修复任务，优先级 P0..."
+
+        elif intent_type == IntentType.INQUIRY:
+            # 根据消息内容生成引导
+            if "进度" in message or "状态" in message:
+                return "正在查询项目进度..."
+            elif "团队" in message or "成员" in message:
+                return "正在查询团队信息..."
+            return "正在处理您的咨询..."
+
+        elif intent_type == IntentType.MANAGEMENT:
+            if "报告" in message:
+                return "正在生成项目报告..."
+            elif "进度" in message:
+                return "正在查询进度..."
+            return "正在处理管理请求..."
+
+        else:
+            return "我正在理解您的请求，请稍等..."
+
+    def _get_action_hint(self, intent_type: IntentType) -> str:
+        """
+        根据意图生成下一步行动提示
+
+        Args:
+            intent_type: 意图类型
+
+        Returns:
+            行动提示
+        """
+        hints = {
+            IntentType.DEVELOPMENT: "create_task -> assign_to_developer -> execute_workflow",
+            IntentType.BUGFIX: "create_task -> assign_to_developer -> fix_bug_workflow",
+            IntentType.INQUIRY: "search_memory -> return_info_or_guide",
+            IntentType.MANAGEMENT: "get_status -> generate_report",
+            IntentType.UNKNOWN: "request_clarification",
+        }
+        return hints.get(intent_type, "unknown")
 
 
 # ==================== 便捷函数 ====================
