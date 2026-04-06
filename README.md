@@ -8,7 +8,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-690%20passed-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-755%20passed-green.svg)](tests/)
 
 </div>
 
@@ -578,7 +578,7 @@ HarnessGenJ/
 │       ├── hooks_integration.py # Hooks 集成层
 │       └── adversarial.py    # 对抗性工作流
 │
-└── tests/                     # 测试文件（660个测试用例）
+└── tests/                     # 测试文件（755个测试用例）
     ├── roles/                 # 角色单元测试
     │   ├── test_product_manager.py
     │   └── test_project_manager.py
@@ -590,7 +590,32 @@ HarnessGenJ/
 
 ## 更新日志
 
-### v1.2.0 (当前版本)
+### v1.2.1 (当前版本)
+
+**关键修复与测试增强**
+
+修复触发链断裂问题，新增核心模块全面测试覆盖。
+
+1. **触发链修复**
+   - 修复 `HybridIntegration.trigger_on_write_complete()` 在 BUILTIN 模式下未调用 `TriggerManager` 的关键问题
+   - 添加 `trigger_manager` 参数到 `HybridIntegration.__init__()`
+   - 确保 `develop()` → `HybridIntegration` → `TriggerManager` → 角色执行 → `ScoreManager` 数据流完整
+
+2. **初始化顺序修正**
+   - `engine.py` 中 `trigger_manager` 在 `hybrid_integration` 之前创建
+   - 通过依赖注入传递给 `HybridIntegration`
+
+3. **核心模块全面测试**
+   - 新增 `tests/harness/test_hybrid_integration.py` (20个测试)
+   - 新增 `tests/workflow/test_task_state.py` (32个测试)
+   - 新增 `tests/integration/test_full_data_flow.py` (15个测试)
+   - 测试覆盖：模式切换、状态转换、数据流验证、职责边界
+
+4. **测试统计**
+   - 总测试数量：755 个（全部通过）
+   - 新增 67 个测试用例
+
+### v1.2.0
 
 **架构重构优化**
 

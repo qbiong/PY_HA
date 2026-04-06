@@ -2,11 +2,77 @@
 
 > 生成日期: 2026-04-06
 > 更新日期: 2026-04-06
-> 版本: v1.1
+> 版本: v1.2
 
 ---
 
 ## 第零部分：已完成优化
+
+### v1.2.1 关键修复与测试增强 ✅
+
+#### 1. 触发链修复 ✅
+
+**问题**: `HybridIntegration.trigger_on_write_complete()` 在 BUILTIN 模式下未调用 `TriggerManager`，导致触发链断裂。
+
+**解决方案**:
+- 添加 `trigger_manager` 参数到 `HybridIntegration.__init__()`
+- 在 BUILTIN 模式下调用 `TriggerManager.trigger(TriggerEvent.ON_WRITE_COMPLETE, ...)`
+- 确保 `develop()` → `HybridIntegration` → `TriggerManager` → 角色执行 → `ScoreManager` 数据流完整
+
+**代码变更**:
+```python
+# hybrid_integration.py
+def __init__(
+    self,
+    config: HybridConfig,
+    hooks_integration: HooksIntegration,
+    trigger_manager: TriggerManager | None = None,  # 新增
+    ...
+) -> None:
+    self._trigger_manager = trigger_manager
+
+def trigger_on_write_complete(self, ...):
+    elif self._active_mode == IntegrationMode.BUILTIN:
+        # 新增：调用 TriggerManager
+        if self._trigger_manager:
+            self._trigger_manager.trigger(
+                TriggerEvent.ON_WRITE_COMPLETE,
+                {"file_path": file_path, "content": content, "metadata": metadata or {}},
+            )
+```
+
+#### 2. 初始化顺序修正 ✅
+
+**问题**: `engine.py` 中 `hybrid_integration` 在 `trigger_manager` 之前创建，导致依赖注入失败。
+
+**解决方案**:
+- `trigger_manager` 在 `hybrid_integration` 之前创建
+- 通过依赖注入传递给 `create_hybrid_integration()`
+
+**代码变更**:
+```python
+# engine.py
+# 第232-248行
+self._trigger_manager = create_trigger_manager(self)  # 先创建
+self._hybrid_integration = create_hybrid_integration(
+    workspace=workspace,
+    trigger_manager=self._trigger_manager,  # 传入
+    ...
+)
+```
+
+#### 3. 核心模块全面测试 ✅
+
+| 测试文件 | 测试数量 | 覆盖内容 |
+|---------|---------|----------|
+| `tests/harness/test_hybrid_integration.py` | 20 | 模式切换、事件触发、自动降级、回调机制 |
+| `tests/workflow/test_task_state.py` | 32 | 状态转换、无效转换处理、钩子触发、便捷方法 |
+| `tests/integration/test_full_data_flow.py` | 15 | 完整数据流、模块职责边界、跨会话持久化 |
+
+**测试验证结果**:
+- 755 个测试全部通过
+- 新增 67 个测试用例
+- 覆盖触发链、状态机重构、数据流一致性
 
 ### v1.2.0 架构重构优化
 
@@ -56,7 +122,7 @@
 
 #### 5. 测试验证 ✅
 
-- 所有 690 个测试通过
+- 所有 690 个测试通过（基础验证）
 - 验证：触发路径简化、状态机重构、数据流一致性
 
 ---
