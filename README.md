@@ -8,7 +8,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-473%20passed-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-588%20passed-green.svg)](tests/)
 
 </div>
 
@@ -549,13 +549,19 @@ HarnessGenJ/
 │   │   ├── collaboration.py  # 角色协作管理器
 │   │   ├── message_bus.py    # 消息传递总线
 │   │   ├── dependency.py     # 任务依赖图（循环检测、拓扑排序）
-│   │   └── tdd_workflow.py   # TDD 工作流
+│   │   ├── tdd_workflow.py   # TDD 工作流
+│   │   └── requirement_stage.py # 需求检测阶段
 │   │
 │   ├── memory/                # JVM风格记忆管理
 │   │   ├── manager.py        # 记忆管理器 + 质量集成
 │   │   ├── heap.py           # 分代堆 + 质量字段
 │   │   ├── gc.py             # 垃圾回收 + 质量感知GC
 │   │   └── hotspot.py        # 热点检测
+│   │
+│   ├── maintenance/           # 主动文档维护
+│   │   ├── detector.py       # 需求检测器
+│   │   ├── confirmation.py   # 确认机制管理器
+│   │   └── manager.py        # 文档维护管理器
 │   │
 │   ├── quality/               # 质量保证系统
 │   │   ├── score.py          # 积分管理器
@@ -582,14 +588,80 @@ HarnessGenJ/
 │       ├── hooks_integration.py # Hooks 集成层
 │       └── adversarial.py    # 对抗性工作流
 │
-└── tests/                     # 测试文件（473个测试用例）
+└── tests/                     # 测试文件（588个测试用例）
 ```
 
 ---
 
 ## 更新日志
 
-### v0.8.1 (当前版本)
+### v0.9.0 (当前版本)
+
+**统一需求检测架构**
+
+将需求检测功能统一到工作流阶段，解决 IntentRouter 与 RequirementDetector 的职责重叠问题。
+
+1. **架构设计统一**
+   - IntentRouter：宏观路由决策（走哪个工作流）
+   - RequirementDetectionStage：微观需求提取（提取具体需求内容）
+   - 避免角色层重复实现需求检测逻辑
+
+2. **RequirementDetectionStage 需求检测阶段**
+   - 作为工作流阶段集成到 pipeline
+   - 统一管理 RequirementDetector、ConfirmationManager、DocumentMaintenanceManager
+   - 支持从用户消息和 AI 分析结果中提取需求
+   - 高置信度需求自动确认，低置信度需求请求用户确认
+
+3. **RequirementDetector 需求检测器**
+   - 多模式匹配（关键词 + 正则表达式）
+   - 置信度评估（0-1范围）
+   - 支持多种需求类型：功能、Bug修复、改进、约束、咨询、反馈
+   - 支持从代码审查、测试失败结果中检测需求
+
+4. **ConfirmationManager 确认机制**
+   - 添加到文档前询问用户确认
+   - 高置信度需求自动批准（阈值可配置）
+   - 批量确认/拒绝操作
+
+5. **DocumentMaintenanceManager 文档维护管理器**
+   - 需求自动添加到文档
+   - 团队通知系统（按角色分发）
+   - 任务自动创建
+
+6. **API 示例**
+   ```python
+   from harnessgenj import Harness
+   from harnessgenj.workflow.requirement_stage import RequirementDetectionStage
+
+   # 使用需求检测阶段处理用户消息
+   harness = Harness("my_project")
+   stage = RequirementDetectionStage(harness.memory)
+
+   # 检测需求并询问确认
+   result = stage.execute({
+       "message": "我需要一个购物车功能",
+       "intent_type": "development",
+   })
+
+   # result.detected_requirements - 检测到的需求列表
+   # result.pending_confirmations - 待确认列表
+   # result.confirmed_requirements - 已确认的需求
+   # result.created_tasks - 创建的任务
+
+   # 处理用户确认
+   if result.pending_confirmations:
+       process_result = stage.process_user_confirmation(
+           result.pending_confirmations[0].confirmation_id,
+           "是",
+       )
+   ```
+
+7. **测试覆盖**
+   - 新增 25 个需求检测阶段测试
+   - 新增 90 个维护模块测试
+   - 总测试数量：588 个（全部通过）
+
+### v0.8.1
 
 **工作流与记忆管理深度集成**
 
