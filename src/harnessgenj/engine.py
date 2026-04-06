@@ -235,9 +235,13 @@ class Harness:
             blocking_mode=True,
         )
 
+        # 事件触发管理器 - 默认启用（需在 hybrid_integration 之前创建）
+        self._trigger_manager = create_trigger_manager(self)
+
         # 混合集成层 - Hooks + 内置触发双轨并存
         self._hybrid_integration = create_hybrid_integration(
             workspace=workspace,
+            trigger_manager=self._trigger_manager,
             score_manager=self._score_manager,
             quality_tracker=self._quality_tracker,
             adversarial_workflow=self._adversarial_workflow,
@@ -266,9 +270,6 @@ class Harness:
 
         # 意图识别路由器
         self._intent_router = create_intent_router()
-
-        # 事件触发管理器 - 默认启用
-        self._trigger_manager = create_trigger_manager(self)
 
         # 加载之前的工作状态
         if persistent:

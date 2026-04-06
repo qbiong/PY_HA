@@ -37,6 +37,7 @@ from harnessgenj.harness.hooks_integration import (
 from harnessgenj.quality.score import ScoreManager
 from harnessgenj.quality.tracker import QualityTracker
 from harnessgenj.harness.adversarial import AdversarialWorkflow
+from harnessgenj.harness.event_triggers import TriggerManager, TriggerEvent
 
 
 class IntegrationMode(str, Enum):
@@ -100,6 +101,7 @@ class HybridIntegration:
         self,
         config: HybridConfig,
         hooks_integration: HooksIntegration,
+        trigger_manager: TriggerManager | None = None,
         score_manager: ScoreManager | None = None,
         quality_tracker: QualityTracker | None = None,
         adversarial_workflow: AdversarialWorkflow | None = None,
@@ -111,6 +113,7 @@ class HybridIntegration:
         Args:
             config: 混合配置
             hooks_integration: Hooks 集成实例
+            trigger_manager: 事件触发管理器
             score_manager: 积分管理器
             quality_tracker: 质量追踪器
             adversarial_workflow: 对抗工作流
@@ -118,6 +121,7 @@ class HybridIntegration:
         """
         self.config = config
         self._hooks = hooks_integration
+        self._trigger_manager = trigger_manager
         self._score_manager = score_manager
         self._quality_tracker = quality_tracker
         self._adversarial = adversarial_workflow
@@ -295,10 +299,15 @@ class HybridIntegration:
                 self._stats["hooks_success"] += 1
 
             elif self._active_mode == IntegrationMode.BUILTIN:
-                # 内置模式：记录事件，由 TriggerManager 分发
+                # 内置模式：记录事件，并通过 TriggerManager 分发对抗审查
                 event.mode = IntegrationMode.BUILTIN
                 self._stats["builtin_triggers"] += 1
-                # 注意：不在此处执行对抗审查，由 engine.py 统一调用 TriggerManager
+                # 调用 TriggerManager 触发对抗审查
+                if self._trigger_manager:
+                    self._trigger_manager.trigger(
+                        TriggerEvent.ON_WRITE_COMPLETE,
+                        {"file_path": file_path, "content": content, "metadata": metadata or {}},
+                    )
 
             elif self._active_mode == IntegrationMode.MCP:
                 # MCP 模式：调用 MCP Server（未来实现）
@@ -526,6 +535,7 @@ class HybridIntegration:
 
 def create_hybrid_integration(
     workspace: str = ".harnessgenj",
+    trigger_manager: TriggerManager | None = None,
     score_manager: ScoreManager | None = None,
     quality_tracker: QualityTracker | None = None,
     adversarial_workflow: AdversarialWorkflow | None = None,
@@ -537,6 +547,7 @@ def create_hybrid_integration(
 
     Args:
         workspace: 工作空间路径
+        trigger_manager: 事件触发管理器
         score_manager: 积分管理器
         quality_tracker: 质量追踪器
         adversarial_workflow: 对抗工作流
@@ -558,6 +569,7 @@ def create_hybrid_integration(
     return HybridIntegration(
         config=config,
         hooks_integration=hooks_integration,
+        trigger_manager=trigger_manager,
         score_manager=score_manager,
         quality_tracker=quality_tracker,
         adversarial_workflow=adversarial_workflow,
