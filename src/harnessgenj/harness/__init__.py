@@ -88,6 +88,13 @@ from harnessgenj.harness.event_triggers import (
     TriggerResult,
     create_trigger_manager,
 )
+from harnessgenj.harness.hybrid_integration import (
+    HybridIntegration,
+    HybridConfig,
+    IntegrationMode,
+    EventRecord,
+    create_hybrid_integration,
+)
 
 __all__ = [
     # HumanLoop
@@ -156,4 +163,10 @@ __all__ = [
     "TriggerEvent",
     "TriggerResult",
     "create_trigger_manager",
+    # Hybrid Integration
+    "HybridIntegration",
+    "HybridConfig",
+    "IntegrationMode",
+    "EventRecord",
+    "create_hybrid_integration",
 ]

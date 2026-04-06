@@ -1,8 +1,8 @@
 """
-Product Manager Role - 产品经理角色（渐进式披露版）
+Product Manager Role - 产品经理角色（需求管理者，渐进式披露版）
 
 职责:
-- 需求分析与整理
+- 需求分析与整理（产出需求文档）
 - 用户故事编写
 - 需求文档维护
 - 需求变更管理
@@ -17,6 +17,15 @@ Product Manager Role - 产品经理角色（渐进式披露版）
 - 项目基本信息
 - 完整需求文档
 - 进度摘要（了解开发进展）
+
+哲学定位（基于业界最佳实践）:
+- 需求者 - 定义价值，不定义实现
+- 核心原则：你说"需要什么"，架构师说"怎么实现"
+- 工具边界：只能编辑文档，不能编辑代码
+
+边界定义:
+- 决策权限：需求范围、业务优先级、验收标准、发布时间
+- 禁止行为：设计技术方案、定义API接口、写实现代码、做技术选型决策
 
 注意: 需求检测功能已移至 workflow/requirement_stage.py
        产品经理通过 RequirementDetectionStage 获取需求检测结果
@@ -49,7 +58,7 @@ class ProductManagerContext(BaseModel):
 
 class ProductManager(AgentRole):
     """
-    产品经理 - 专注于需求管理
+    产品经理 - 需求管理者角色
 
     Harness角色定义:
     - 职责边界: 需求分析、需求文档维护、需求变更管理
@@ -60,7 +69,54 @@ class ProductManager(AgentRole):
     - 只维护需求文档
     - 看不到设计、开发等详细内容
     - 只能看到进度摘要
+
+    业界最佳实践增强:
+    - 工具权限: read, search, edit_doc（只能编辑文档）
+    - 决策权限: 需求范围、业务优先级、验收标准
+    - 禁止行为: 设计技术方案、定义API接口、写实现代码
     """
+
+    # ==================== 核心职责定义（哲学层面） ====================
+
+    CORE_RESPONSIBILITIES = """
+你的职责是**定义需求**，不是**设计方案**。
+
+需求内容：
+- 业务目标定义
+- 用户故事编写
+- 验收标准制定
+- 优先级排序
+
+禁止内容：
+- ❌ 不要设计技术方案 - 这是架构师的职责
+- ❌ 不要定义API接口 - 回调架构师
+- ❌ 不要写实现代码 - 这是开发者的职责
+- ❌ 不要修改架构文档 - 回调架构师
+
+输出产物：
+- 需求文档
+- 用户故事
+- 验收标准
+- 优先级列表
+"""
+
+    BOUNDARY_CHECK_PROMPT = """
+在定义需求时：
+- 描述"用户想要什么"，不描述"系统怎么做"
+- 定义"业务价值"，不定义"技术实现"
+- 设定"验收标准"，不设定"实现细节"
+
+当你开始思考技术细节时，停下来。
+这是架构师的职责，回调架构师。
+"""
+
+    SELF_REFLECTION_PROMPT = """
+完成需求文档后，检查：
+- [ ] 需求是否描述了业务价值？
+- [ ] 验收标准是否可测试？
+- [ ] 是否包含了技术实现细节？（应该删除）
+- [ ] 开发者能否理解用户想要什么？（应该能）
+"""
 
     def __init__(
         self,
@@ -80,13 +136,57 @@ class ProductManager(AgentRole):
     @property
     def responsibilities(self) -> list[str]:
         return [
-            "需求收集与分析",
-            "需求文档维护",
-            "用户故事编写",
-            "优先级定义与排序",
-            "验收标准制定",
-            "需求变更管理",
+            "需求收集与分析（产出需求文档）",
+            "用户故事编写（产出用户故事）",
+            "验收标准制定（产出验收标准）",
+            "优先级排序（产出优先级列表）",
+            "需求变更管理（产出变更记录）",
         ]
+
+    @property
+    def forbidden_actions(self) -> list[str]:
+        """禁止行为 - 需求者只定义价值，不定义实现"""
+        return [
+            "设计技术方案",
+            "定义API接口",
+            "写实现代码",
+            "修改架构文档",
+            "做技术选型决策",
+        ]
+
+    @property
+    def decision_authority(self) -> list[str]:
+        """决策权限 - 产品经理有权决定业务范围"""
+        return [
+            "需求范围",
+            "业务优先级",
+            "验收标准",
+            "发布时间",
+        ]
+
+    @property
+    def no_decision_authority(self) -> list[str]:
+        """无决策权限 - 技术决策应回调架构师"""
+        return [
+            "技术方案",
+            "API设计",
+            "数据库设计",
+            "架构风格",
+        ]
+
+    def build_role_prompt(self) -> str:
+        """构建完整的角色提示词"""
+        return f"""
+你是项目的产品经理。
+
+{self.CORE_RESPONSIBILITIES}
+
+{self.BOUNDARY_CHECK_PROMPT}
+
+{self.SELF_REFLECTION_PROMPT}
+
+记住：你的职责是定义"用户需要什么"，不是"系统怎么做"。
+"""
 
     def set_state_manager(self, state_manager: Any) -> None:
         """
@@ -361,5 +461,20 @@ def create_product_manager(
     name: str = "产品经理",
     context: RoleContext | None = None,
 ) -> ProductManager:
-    """创建产品经理实例"""
+    """
+    创建产品经理实例
+
+    Args:
+        pm_id: 产品经理ID
+        name: 产品经理名称
+        context: 角色上下文
+
+    Returns:
+        产品经理实例
+
+    工具权限:
+        - read: 读取文件
+        - search: 搜索代码
+        - edit_doc: 编辑文档（不能编辑代码）
+    """
     return ProductManager(role_id=pm_id, name=name, context=context)

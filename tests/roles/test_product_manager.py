@@ -62,13 +62,13 @@ class TestProductManagerResponsibilities:
         pm = ProductManager()
         responsibilities = pm.responsibilities
 
-        assert len(responsibilities) == 6
-        assert "需求收集与分析" in responsibilities
-        assert "需求文档维护" in responsibilities
-        assert "用户故事编写" in responsibilities
-        assert "优先级定义与排序" in responsibilities
-        assert "验收标准制定" in responsibilities
-        assert "需求变更管理" in responsibilities
+        # 更新后的职责列表（基于业界最佳实践）
+        assert len(responsibilities) == 5
+        assert "需求收集与分析（产出需求文档）" in responsibilities
+        assert "用户故事编写（产出用户故事）" in responsibilities
+        assert "验收标准制定（产出验收标准）" in responsibilities
+        assert "优先级排序（产出优先级列表）" in responsibilities
+        assert "需求变更管理（产出变更记录）" in responsibilities
 
     def test_role_type(self):
         """测试角色类型"""

@@ -334,7 +334,7 @@ class TriggerManager:
         context: dict[str, Any],
     ) -> TriggerResult:
         """
-        执行触发
+        执行触发（增强版 - 实际执行角色审查逻辑）
 
         Args:
             rule: 触发规则
@@ -353,7 +353,7 @@ class TriggerManager:
 
         try:
             # 获取角色
-            from harnessgenj.roles import RoleType
+            from harnessgenj.roles import RoleType, create_role
 
             role_type_enum = getattr(RoleType, role_type.upper(), None)
             if role_type_enum is None:
@@ -364,7 +364,6 @@ class TriggerManager:
             # 获取或创建角色
             roles = self.harness.coordinator.get_roles_by_type(role_type_enum)
             if not roles:
-                # 创建角色
                 role = self.harness.coordinator.create_role(
                     role_type_enum,
                     f"{role_type}_trigger",
@@ -387,12 +386,40 @@ class TriggerManager:
                 content=message,
             )
 
-            # 执行角色任务
-            if hasattr(role, "execute") and callable(role.execute):
-                role.execute(context)
+            # ==================== 新增：实际执行角色审查逻辑 ====================
+
+            # 获取需要审查的内容
+            content = context.get("content", "")
+            file_path = context.get("file_path", "")
+
+            # 根据角色类型执行不同的审查
+            if role_type == "code_reviewer" and content:
+                review_result = self._execute_code_review(role, content, file_path)
+                result.message = f"Code review completed: {review_result.get('status', 'unknown')}"
+
+                # 如果发现问题，触发积分更新
+                if review_result.get("issues"):
+                    self._update_scores_for_issues(review_result["issues"], context)
+
+            elif role_type == "bug_hunter" and content:
+                hunt_result = self._execute_bug_hunt(role, content, file_path)
+                result.message = f"Bug hunt completed: risk_score={hunt_result.get('risk_score', 0)}"
+
+                # 如果发现漏洞，触发积分更新
+                if hunt_result.get("vulnerabilities"):
+                    self._update_scores_for_issues(hunt_result["vulnerabilities"], context)
+
+            elif role_type == "tester":
+                test_result = self._execute_test_suggestions(role, context)
+                result.message = f"Test suggestions: {test_result.get('suggestions_count', 0)} suggestions"
+
+            else:
+                # 通用角色执行
+                if hasattr(role, "execute") and callable(role.execute):
+                    role.execute(context)
+                result.message = f"Successfully triggered {role_type}"
 
             result.success = True
-            result.message = f"Successfully triggered {role_type}"
 
         except Exception as e:
             result.success = False
@@ -400,6 +427,118 @@ class TriggerManager:
 
         result.duration = time.time() - start_time
         return result
+
+    def _execute_code_review(self, role: Any, content: str, file_path: str) -> dict[str, Any]:
+        """
+        执行代码审查
+
+        Args:
+            role: 审查者角色
+            content: 代码内容
+            file_path: 文件路径
+
+        Returns:
+            审查结果
+        """
+        try:
+            # 使用角色的 review 方法
+            if hasattr(role, "review"):
+                review_result = role.review(content)
+                return {
+                    "status": "passed" if review_result.passed else "issues_found",
+                    "issues": [
+                        {
+                            "severity": issue.severity.value if hasattr(issue.severity, 'value') else str(issue.severity),
+                            "description": issue.description,
+                        }
+                        for issue in review_result.issues
+                    ],
+                    "raw_result": review_result,
+                }
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+        return {"status": "skipped"}
+
+    def _execute_bug_hunt(self, role: Any, content: str, file_path: str) -> dict[str, Any]:
+        """
+        执行漏洞猎杀
+
+        Args:
+            role: 猎手角色
+            content: 代码内容
+            file_path: 文件路径
+
+        Returns:
+            猎杀结果
+        """
+        try:
+            # 使用角色的 hunt 方法
+            if hasattr(role, "hunt"):
+                hunt_result = role.hunt(content)
+                return {
+                    "risk_score": hunt_result.risk_score,
+                    "vulnerabilities": [
+                        {
+                            "severity": vuln.severity.value if hasattr(vuln.severity, 'value') else str(vuln.severity),
+                            "description": vuln.description,
+                        }
+                        for vuln in hunt_result.vulnerabilities
+                    ],
+                    "raw_result": hunt_result,
+                }
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+        return {"status": "skipped", "risk_score": 0, "vulnerabilities": []}
+
+    def _execute_test_suggestions(self, role: Any, context: dict[str, Any]) -> dict[str, Any]:
+        """
+        生成测试建议
+
+        Args:
+            role: 测试角色
+            context: 上下文
+
+        Returns:
+            测试建议
+        """
+        try:
+            # 使用角色生成测试建议
+            if hasattr(role, "suggest_tests"):
+                suggestions = role.suggest_tests(context)
+                return {
+                    "suggestions_count": len(suggestions) if suggestions else 0,
+                    "suggestions": suggestions,
+                }
+        except Exception:
+            pass
+
+        return {"suggestions_count": 0}
+
+    def _update_scores_for_issues(self, issues: list[dict], context: dict[str, Any]) -> None:
+        """
+        根据发现的问题更新积分
+
+        Args:
+            issues: 问题列表
+            context: 上下文
+        """
+        try:
+            if hasattr(self.harness, "_score_manager") and self.harness._score_manager:
+                for issue in issues[:3]:  # 最多记录前3个问题
+                    severity = issue.get("severity", "minor")
+                    description = issue.get("description", "")
+
+                    self.harness._score_manager.on_issue_found(
+                        generator_id="developer_1",
+                        discriminator_id="code_reviewer_1",
+                        severity=severity,
+                        task_id=context.get("task_id"),
+                        description=description,
+                    )
+        except Exception:
+            pass  # 积分更新失败不影响主流程
 
     def get_rules(self) -> list[TriggerRule]:
         """获取所有触发规则"""

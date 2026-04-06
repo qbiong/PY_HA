@@ -13,6 +13,15 @@ Project Manager Role - 项目经理角色（中央协调者）
 - 收集角色产出并更新项目文档
 - 维护项目进度和状态
 
+哲学定位（基于业界最佳实践）:
+- 协调者 - 不决策，只协调
+- 核心原则：你协调"谁做什么"，不决定"怎么做"
+- 工具边界：只能编辑文档，不能编辑代码
+
+边界定义:
+- 决策权限：任务分配、资源调度、发布计划、风险应对策略
+- 禁止行为：做技术决策、修改代码文件、修改需求文档、评判技术方案
+
 使用示例:
     pm = ProjectManager(state_manager=state)
 
@@ -62,7 +71,7 @@ class TaskAssignment(BaseModel):
 
 class ProjectManager(AgentRole):
     """
-    项目经理 - 中央协调者
+    项目经理 - 中央协调者角色
 
     核心职责:
     1. 维护项目所有文档
@@ -79,7 +88,54 @@ class ProjectManager(AgentRole):
     - 为开发者生成最小上下文：项目基本信息 + 当前需求
     - 为产品经理生成上下文：项目信息 + 需求文档
     - 为架构师生成上下文：项目信息 + 需求摘要 + 设计文档
+
+    业界最佳实践增强:
+    - 工具权限: read, search, edit_doc（只能编辑文档）
+    - 决策权限: 任务分配、资源调度、发布计划
+    - 禁止行为: 做技术决策、修改代码文件、评判技术方案
     """
+
+    # ==================== 核心职责定义（哲学层面） ====================
+
+    CORE_RESPONSIBILITIES = """
+你的职责是**协调**，不是**技术决策**。
+
+协调内容：
+- 任务分配
+- 进度追踪
+- 资源调度
+- 风险管理
+
+禁止内容：
+- ❌ 不要做技术决策 - 这是架构师的职责
+- ❌ 不要修改代码 - 这是开发者的职责
+- ❌ 不要修改需求 - 这是产品经理的职责
+- ❌ 不要评判技术方案 - 回调架构师
+
+输出产物：
+- 任务分配记录
+- 进度报告
+- 风险登记册
+- 协调记录
+"""
+
+    BOUNDARY_CHECK_PROMPT = """
+在协调任务时：
+- 分配"做什么"，不指定"怎么做"
+- 追踪"进度"，不评判"技术方案"
+- 报告"状态"，不做"技术决策"
+
+当你需要做技术判断时，停下来。
+这是架构师的职责，回调架构师。
+"""
+
+    SELF_REFLECTION_PROMPT = """
+完成协调后，检查：
+- [ ] 我是否对技术细节做了判断？
+- [ ] 我是否直接修改了文档？（应该通知对应角色）
+- [ ] 每个角色的职责是否清晰？
+- [ ] 是否有角色越界行为？
+"""
 
     def __init__(
         self,
@@ -99,14 +155,58 @@ class ProjectManager(AgentRole):
     @property
     def responsibilities(self) -> list[str]:
         return [
-            "项目文档管理",
-            "角色任务调度",
-            "进度追踪与报告",
-            "资源分配与管理",
-            "风险识别与应对",
-            "渐进式信息披露",
-            "团队沟通协调",
+            "任务分配与调度（产出任务分配表）",
+            "进度追踪与报告（产出进度报告）",
+            "资源分配与管理（产出资源计划）",
+            "风险识别与应对（产出风险登记册）",
+            "团队沟通协调（产出协调记录）",
+            "渐进式信息披露（产出角色上下文）",
         ]
+
+    @property
+    def forbidden_actions(self) -> list[str]:
+        """禁止行为 - 协调者不干预技术决策"""
+        return [
+            "做技术决策",
+            "修改代码文件",
+            "修改需求文档",
+            "评判技术方案",
+            "干预具体实现",
+        ]
+
+    @property
+    def decision_authority(self) -> list[str]:
+        """决策权限 - 项目经理有权决定资源分配"""
+        return [
+            "任务分配",
+            "资源调度",
+            "发布计划",
+            "风险应对策略",
+        ]
+
+    @property
+    def no_decision_authority(self) -> list[str]:
+        """无决策权限 - 技术决策应回调架构师"""
+        return [
+            "技术方案",
+            "需求范围",
+            "代码实现",
+            "测试策略",
+        ]
+
+    def build_role_prompt(self) -> str:
+        """构建完整的角色提示词"""
+        return f"""
+你是项目的项目经理。
+
+{self.CORE_RESPONSIBILITIES}
+
+{self.BOUNDARY_CHECK_PROMPT}
+
+{self.SELF_REFLECTION_PROMPT}
+
+记住：你的职责是协调"谁做什么"，不决定"怎么做"。
+"""
 
     def _setup_skills(self) -> None:
         """设置管理技能"""
@@ -494,7 +594,23 @@ def create_project_manager(
     context: RoleContext | None = None,
     state_manager: MemoryManager | None = None,
 ) -> ProjectManager:
-    """创建项目经理实例"""
+    """
+    创建项目经理实例
+
+    Args:
+        pm_id: 项目经理ID
+        name: 项目经理名称
+        context: 角色上下文
+        state_manager: 状态管理器
+
+    Returns:
+        项目经理实例
+
+    工具权限:
+        - read: 读取文件
+        - search: 搜索代码
+        - edit_doc: 编辑文档（不能编辑代码）
+    """
     return ProjectManager(
         role_id=pm_id,
         name=name,

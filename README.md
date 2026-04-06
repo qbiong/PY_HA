@@ -8,7 +8,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-685%20passed-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-690%20passed-green.svg)](tests/)
 
 </div>
 
@@ -590,7 +590,43 @@ HarnessGenJ/
 
 ## 更新日志
 
-### v1.1.1 (当前版本)
+### v1.2.0 (当前版本)
+
+**架构重构优化**
+
+解决框架核心模块间的职责冗余问题，实现清晰的分层架构。
+
+1. **HybridIntegration 职责简化**
+   - 移除直接对抗触发逻辑，统一由 `TriggerManager` 分发
+   - 移除直接积分更新，由 `event_triggers.py` 统一处理
+   - 删除 `_trigger_adversarial_for_file()` 方法
+   - 专注于事件记录和模式切换（Hooks/Builtin/MCP）
+
+2. **TaskStateMachine 职责明确化**
+   - 移除 `description` 和 `metadata` 字段
+   - 只管理状态流转（pending → in_progress → reviewing → completed）
+   - 任务详情统一存储在 `MemoryManager`（唯一数据源）
+   - 避免 `create_task()` 参数重复传递
+
+3. **engine.py develop() 触发路径简化**
+   - 移除末尾的重复 `TriggerManager.trigger()` 调用
+   - 事件触发统一通过 `HybridIntegration.trigger_on_write_complete()`
+   - 避免双重触发问题
+
+4. **数据流清晰化**
+   | 数据类型 | 存储位置 |
+   |---------|----------|
+   | 任务详情 | MemoryManager |
+   | 任务状态 | TaskStateMachine |
+   | 事件记录 | HybridIntegration |
+   | 对抗审查结果 | TriggerManager |
+   | 积分记录 | ScoreManager |
+
+5. **测试验证**
+   - 所有 690 个测试通过
+   - 验证：触发路径简化、状态机重构、数据流一致性
+
+### v1.1.1
 
 **首次接入引导优化**
 

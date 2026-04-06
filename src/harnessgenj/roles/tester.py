@@ -1,9 +1,9 @@
 """
-Tester Role - 测试人员角色
+Tester Role - 测试人员角色（验证者）
 
 职责:
-- 测试用例设计
-- 测试执行
+- 测试用例设计（产出测试用例）
+- 测试执行（产出测试报告）
 - Bug报告
 - 质量保证
 
@@ -13,6 +13,15 @@ Tester Role - 测试人员角色
 - report_bug: 报告Bug
 - analyze_coverage: 分析覆盖率
 - performance_test: 性能测试
+
+哲学定位（基于业界最佳实践）:
+- 验证者 - 证明正确或发现错误
+- 核心原则：你验证"是否正确"，不决定"怎么实现"
+- 工具边界：能编辑代码（测试代码）和运行终端命令
+
+边界定义:
+- 决策权限：测试用例设计、测试范围确定、测试通过/失败判断
+- 禁止行为：修改生产代码、修改需求文档、修改架构文档、做功能实现决策
 """
 
 from typing import Any
@@ -28,13 +37,57 @@ from harnessgenj.roles.base import (
 
 class Tester(AgentRole):
     """
-    测试人员 - 负责质量保证
+    测试人员 - 验证者角色
 
     Harness角色定义:
     - 职责边界: 测试设计、执行、Bug追踪
     - 技能集: 测试编写、执行、分析
     - 协作: 接收Developer代码，产出Bug报告
+
+    业界最佳实践增强:
+    - 工具权限: read, search, edit_code（测试代码）, terminal
+    - 决策权限: 测试用例设计、测试范围确定、测试通过/失败判断
+    - 禁止行为: 修改生产代码、修改需求文档、修改架构文档
     """
+
+    # ==================== 核心职责定义（哲学层面） ====================
+
+    CORE_RESPONSIBILITIES = """
+你的职责是**验证**，不是**实现**。
+
+测试内容：
+- 测试用例设计
+- 测试执行
+- Bug报告
+- 覆盖率分析
+
+禁止内容：
+- ❌ 不要修改生产代码 - 这是开发者的职责
+- ❌ 不要修改需求文档 - 回调产品经理
+- ❌ 不要修改架构文档 - 回调架构师
+- ❌ 不要做功能实现决策 - 回调架构师
+
+输出产物：
+- 测试用例
+- 测试报告
+- Bug报告
+- 覆盖率报告
+"""
+
+    BOUNDARY_CHECK_PROMPT = """
+在测试过程中：
+- 设计"如何验证"，不设计"如何实现"
+- 报告"是否正确"，不修复"错误代码"
+- 追踪"覆盖率"，不决定"覆盖率目标"
+"""
+
+    SELF_REFLECTION_PROMPT = """
+完成测试后，检查：
+- [ ] 测试用例是否覆盖了验收标准？
+- [ ] 是否测试了边界情况？
+- [ ] Bug报告是否清晰可复现？
+- [ ] 是否测试了异常场景？
+"""
 
     @property
     def role_type(self) -> RoleType:
@@ -43,13 +96,54 @@ class Tester(AgentRole):
     @property
     def responsibilities(self) -> list[str]:
         return [
-            "测试用例设计与编写",
-            "功能测试执行",
-            "Bug发现与报告",
-            "测试覆盖率分析",
-            "回归测试",
-            "性能测试",
+            "测试用例设计（产出测试用例）",
+            "测试执行（产出测试报告）",
+            "Bug发现与报告（产出Bug报告）",
+            "覆盖率分析（产出覆盖率报告）",
+            "回归测试（产出回归报告）",
         ]
+
+    @property
+    def forbidden_actions(self) -> list[str]:
+        """禁止行为 - 验证者只验证，不实现"""
+        return [
+            "修改生产代码",
+            "修改需求文档",
+            "修改架构文档",
+            "做功能实现决策",
+        ]
+
+    @property
+    def decision_authority(self) -> list[str]:
+        """决策权限 - 测试者有权决定测试范围和结果"""
+        return [
+            "测试用例设计",
+            "测试范围确定",
+            "测试通过/失败判断",
+        ]
+
+    @property
+    def no_decision_authority(self) -> list[str]:
+        """无决策权限 - 功能决策应回调架构师或产品经理"""
+        return [
+            "功能实现方式",
+            "需求变更",
+            "架构调整",
+        ]
+
+    def build_role_prompt(self) -> str:
+        """构建完整的角色提示词"""
+        return f"""
+你是项目的测试人员。
+
+{self.CORE_RESPONSIBILITIES}
+
+{self.BOUNDARY_CHECK_PROMPT}
+
+{self.SELF_REFLECTION_PROMPT}
+
+记住：你的职责是验证"是否正确"，不决定"怎么实现"。
+"""
 
     def _setup_skills(self) -> None:
         """设置测试技能"""
@@ -181,5 +275,21 @@ def create_tester(
     name: str = "Tester",
     context: RoleContext | None = None,
 ) -> Tester:
-    """创建测试人员实例"""
+    """
+    创建测试人员实例
+
+    Args:
+        tester_id: 测试者ID
+        name: 测试者名称
+        context: 角色上下文
+
+    Returns:
+        测试人员实例
+
+    工具权限:
+        - read: 读取文件
+        - search: 搜索代码
+        - edit_code: 编辑代码（仅测试代码）
+        - terminal: 执行终端命令
+    """
     return Tester(role_id=tester_id, name=name, context=context)

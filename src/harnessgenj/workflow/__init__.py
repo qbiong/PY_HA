@@ -114,6 +114,14 @@ from harnessgenj.workflow.tdd_workflow import (
     RefactorSuggestion,
     create_tdd_workflow,
 )
+from harnessgenj.workflow.task_state import (
+    TaskStateMachine,
+    TaskState,
+    TaskInfo,
+    StateChangeEvent,
+    InvalidTransitionError,
+    create_task_state_machine,
+)
 
 __all__ = [
     # Pipeline Core
@@ -183,6 +191,13 @@ __all__ = [
     "CoverageReport",
     "RefactorSuggestion",
     "create_tdd_workflow",
+    # Task State Machine
+    "TaskStateMachine",
+    "TaskState",
+    "TaskInfo",
+    "StateChangeEvent",
+    "InvalidTransitionError",
+    "create_task_state_machine",
     # New Workflows
     "create_intent_pipeline",
     "create_development_pipeline",

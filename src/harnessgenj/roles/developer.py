@@ -1,11 +1,11 @@
 """
-Developer Role - 开发人员角色（渐进式披露版）
+Developer Role - 开发人员角色（实现者，渐进式披露版）
 
 职责:
-- 功能实现
+- 功能实现（按ADR和API契约）
 - Bug修复
 - 代码重构
-- 代码审查
+- 向PM汇报进度
 
 特点:
 - 不获取完整项目信息
@@ -22,6 +22,16 @@ Developer Role - 开发人员角色（渐进式披露版）
 - 使用 CodeGenerator 生成模板代码
 - 快速生成函数、类、测试骨架
 - 架构约束自动检查
+
+哲学定位（基于业界最佳实践）:
+- 实现者 - 不决策，只执行
+- 核心原则：你执行"怎么做"，架构师定义"做什么"
+- 工具边界：能编辑代码和运行终端命令
+
+边界定义:
+- 决策权限：函数实现方式、变量命名、代码组织结构（在架构约束内）
+- 禁止行为：做技术选型决策、修改API契约文档、修改架构设计文档
+- 依赖检查：必须有ADR和API契约才能开始实现
 """
 
 from typing import Any
@@ -56,7 +66,7 @@ class DeveloperContext(BaseModel):
 
 class Developer(AgentRole):
     """
-    开发人员 - 只关注开发任务
+    开发人员 - 实现者角色
 
     Harness角色定义:
     - 职责边界: 编码实现、Bug修复、代码质量
@@ -67,7 +77,77 @@ class Developer(AgentRole):
     - 不获取完整项目信息
     - 只能看到项目基本信息和当前任务
     - 设计和需求只能看到摘要
+
+    业界最佳实践增强:
+    - 工具权限: read, search, edit_code, terminal（能编辑代码和运行命令）
+    - 决策权限: 函数实现方式、变量命名、局部优化策略
+    - 禁止行为: 做技术选型决策、修改API契约文档、修改架构设计文档
+    - 依赖检查: 必须有ADR和API契约才能开始实现
     """
+
+    # ==================== 核心职责定义（哲学层面） ====================
+
+    CORE_RESPONSIBILITIES = """
+你的职责是**实现**，不是**决策**。
+
+实现内容：
+- 按架构师的ADR写代码
+- 按API契约实现接口
+- 按数据模型写Entity类
+- 实现具体业务逻辑
+- 编写实现级别的注释
+
+禁止内容：
+- ❌ 不要做技术选型 - 这是架构师的职责
+- ❌ 不要修改API契约 - 回调架构师
+- ❌ 不要修改架构文档 - 回调架构师
+- ❌ 不要质疑技术选型（除非发现致命问题） - 回调架构师
+
+接收产物：
+- ADR（从架构师）
+- API契约（从架构师）
+- 数据模型（从架构师）
+- 需求文档（从产品经理）
+
+输出产物：
+- 可编译的代码
+- 实现级别的文档
+- 实现细节的说明
+"""
+
+    DEPENDENCY_CHECK_PROMPT = """
+实现前必须确认：
+- [ ] 有架构师的ADR吗？（没有则回调）
+- [ ] 有API契约吗？（没有则回调）
+- [ ] 有数据模型吗？（没有则回调）
+- [ ] 技术选型已确定吗？（不确定则回调）
+
+如果以上都没有，不要猜测。
+明确声明："缺少架构决策，需要架构师提供ADR。"
+"""
+
+    BOUNDARY_CHECK_PROMPT = """
+在写任何代码前，问自己：
+1. 我是否知道要实现什么？
+   - 有ADR/API契约 → ✓ 开始实现
+   - 没有 → ✗ 回调架构师请求决策
+
+2. 我是否在做技术决策？
+   - 如果是，停止。回调架构师。
+   - 例如："用什么库？" → 不是你的问题
+
+3. 我是否在修改接口定义？
+   - 如果是，停止。回调架构师。
+   - 你只实现接口，不定义接口。
+"""
+
+    SELF_REFLECTION_PROMPT = """
+完成实现后，检查：
+- [ ] 代码是否遵循ADR的架构决策？
+- [ ] 接口是否与API契约一致？
+- [ ] 是否有遗漏的边界情况？
+- [ ] 是否有未处理的异常？
+"""
 
     def __init__(
         self,
@@ -89,13 +169,66 @@ class Developer(AgentRole):
     @property
     def responsibilities(self) -> list[str]:
         return [
-            "功能开发与实现",
-            "Bug诊断与修复",
-            "代码重构与优化",
-            "代码审查与改进",
-            "单元测试编写",
+            "按ADR实现代码",
+            "按API契约实现接口",
+            "按数据模型实现实体",
+            "实现业务逻辑",
+            "编写实现注释",
             "向PM汇报进度",
         ]
+
+    @property
+    def forbidden_actions(self) -> list[str]:
+        """禁止行为 - 基于GitHub Copilot Custom Agents的工具边界理念"""
+        return [
+            "做技术选型决策",
+            "修改API契约文档",
+            "修改架构设计文档",
+            "修改需求文档",
+            "自行决定技术方案",
+            "修改接口定义",
+        ]
+
+    @property
+    def decision_authority(self) -> list[str]:
+        """决策权限 - 基于Mindra的Worker负责how原则"""
+        return [
+            "函数实现方式",
+            "变量命名",
+            "代码组织结构（在架构约束内）",
+            "局部优化策略",
+            "错误处理方式",
+        ]
+
+    @property
+    def no_decision_authority(self) -> list[str]:
+        """无决策权限 - 这些决策应回调其他角色"""
+        return [
+            "技术栈选择",
+            "API接口定义",
+            "数据模型设计",
+            "系统架构风格",
+            "非功能性需求目标",
+        ]
+
+    def build_role_prompt(self) -> str:
+        """构建完整的角色提示词"""
+        return f"""
+你是项目的开发者。
+
+{self.CORE_RESPONSIBILITIES}
+
+{self.DEPENDENCY_CHECK_PROMPT}
+
+{self.BOUNDARY_CHECK_PROMPT}
+
+{self.SELF_REFLECTION_PROMPT}
+
+当你缺少架构决策时：
+- 不要猜测——明确声明"需要架构师提供ADR"
+- 不要自行决策——回调架构师
+- 不要越界——这是架构师的职责
+"""
 
     def set_context_from_pm(self, context: dict[str, Any]) -> None:
         """
@@ -465,5 +598,21 @@ def create_developer(
     name: str = "开发人员",
     context: RoleContext | None = None,
 ) -> Developer:
-    """创建开发人员实例"""
+    """
+    创建开发人员实例
+
+    Args:
+        developer_id: 开发者ID
+        name: 开发者名称
+        context: 角色上下文
+
+    Returns:
+        开发者实例
+
+    工具权限:
+        - read: 读取文件
+        - search: 搜索代码
+        - edit_code: 编辑代码文件
+        - terminal: 执行终端命令
+    """
     return Developer(role_id=developer_id, name=name, context=context)

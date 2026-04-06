@@ -73,14 +73,14 @@ class TestProjectManagerResponsibilities:
         pm = ProjectManager()
         responsibilities = pm.responsibilities
 
-        assert len(responsibilities) == 7
-        assert "项目文档管理" in responsibilities
-        assert "角色任务调度" in responsibilities
-        assert "进度追踪与报告" in responsibilities
-        assert "资源分配与管理" in responsibilities
-        assert "风险识别与应对" in responsibilities
-        assert "渐进式信息披露" in responsibilities
-        assert "团队沟通协调" in responsibilities
+        # 更新后的职责列表（基于业界最佳实践）
+        assert len(responsibilities) == 6
+        assert "任务分配与调度（产出任务分配表）" in responsibilities
+        assert "进度追踪与报告（产出进度报告）" in responsibilities
+        assert "资源分配与管理（产出资源计划）" in responsibilities
+        assert "风险识别与应对（产出风险登记册）" in responsibilities
+        assert "团队沟通协调（产出协调记录）" in responsibilities
+        assert "渐进式信息披露（产出角色上下文）" in responsibilities
 
     def test_role_type(self):
         """测试角色类型"""

@@ -100,6 +100,18 @@ from harnessgenj.harness.event_triggers import (
     TriggerEvent,
     create_trigger_manager,
 )
+from harnessgenj.harness.hybrid_integration import (
+    HybridIntegration,
+    HybridConfig,
+    IntegrationMode,
+    create_hybrid_integration,
+)
+from harnessgenj.workflow.task_state import (
+    TaskStateMachine,
+    TaskState,
+    TaskInfo,
+    create_task_state_machine,
+)
 from harnessgenj.sync.doc_sync import DocumentSyncManager, SyncConfig, create_sync_manager
 from harnessgenj.workflow.tdd_workflow import TDDWorkflow, TDDConfig, TDDCycle, create_tdd_workflow
 
@@ -222,6 +234,18 @@ class Harness:
             enabled=True,
             blocking_mode=True,
         )
+
+        # 混合集成层 - Hooks + 内置触发双轨并存
+        self._hybrid_integration = create_hybrid_integration(
+            workspace=workspace,
+            score_manager=self._score_manager,
+            quality_tracker=self._quality_tracker,
+            adversarial_workflow=self._adversarial_workflow,
+            auto_fallback=True,
+        )
+
+        # 任务状态机 - 管理任务状态流转
+        self._task_state_machine = create_task_state_machine()
 
         # 角色协作管理器 - 默认启用
         self._collaboration = create_collaboration_manager(self.coordinator)
@@ -694,6 +718,9 @@ class Harness:
             "created_at": timestamp,
         })
 
+        # ==================== 新增：使用任务状态机管理状态 ====================
+        self._task_state_machine.create_task(task_id=task_id)
+
         # 更新进度文档
         progress = self.memory.get_document("progress") or "# 项目进度\n"
         progress += f"\n## {task_id} - {category}\n- **描述**: {request}\n- **优先级**: {priority}\n- **状态**: 待处理\n- **创建时间**: {timestamp}\n"
@@ -746,10 +773,22 @@ class Harness:
             task["hook_errors"] = post_result.errors
             task["blocked_by"] = post_result.blocked_by
             self.memory.store_task(task_id, task)
+
+            # ==================== 新增：更新任务状态机 ====================
+            self._task_state_machine.fail(task_id, f"被Hooks阻塞: {post_result.blocked_by}")
+
             return False
 
         # 判断任务类型
         is_bug = task.get("category") in ("Bug修复", "Bug")
+
+        # ==================== 新增：使用状态机完成任务 ====================
+        try:
+            self._task_state_machine.submit_review(task_id, "提交审查")
+            self._task_state_machine.complete(task_id, summary)
+        except Exception:
+            # 状态机转换失败，回退到传统方式
+            pass
 
         # 更新任务状态
         task["status"] = "completed"
@@ -847,6 +886,27 @@ class Harness:
         result = self.coordinator.run_workflow("feature", {"feature_request": feature_request})
 
         if result.get("status") == "completed":
+            # ==================== 新增：内置对抗触发 ====================
+            # 获取产出的代码（如果有）
+            code = result.get("code", "")
+            if not code:
+                artifacts = result.get("artifacts", [])
+                if artifacts and isinstance(artifacts, list) and len(artifacts) > 0:
+                    first_artifact = artifacts[0]
+                    if isinstance(first_artifact, dict):
+                        code = first_artifact.get("content", "")
+                    elif isinstance(first_artifact, str):
+                        code = first_artifact
+
+            # 使用混合集成层触发对抗审查
+            if code and not skip_hooks:
+                review_event = self._hybrid_integration.trigger_on_write_complete(
+                    file_path=result.get("file_path", "unknown.py"),
+                    content=code,
+                    metadata={"task_id": task_id, "feature": feature_request},
+                )
+                result["review_event"] = review_event.model_dump()
+
             # Hooks: Post-Task 检查（开发后验证）
             if not skip_hooks:
                 post_result = self._hooks_integration.run_post_task({
@@ -868,15 +928,16 @@ class Harness:
             # 同步进度文档
             self._sync_progress_document()
 
+            # ==================== 新增：更新任务状态和积分 ====================
             if task_id:
+                # 使用混合集成层触发任务完成事件（自动更新积分）
+                self._hybrid_integration.trigger_on_task_complete(
+                    task_id=task_id,
+                    summary=f"功能完成: {feature_request[:50]}",
+                    metadata={"rounds": 1},
+                )
                 self.complete_task(task_id, f"功能完成: {feature_request[:50]}")
             self._save_state()
-
-            # 触发任务完成事件
-            self._trigger_manager.trigger(
-                TriggerEvent.ON_TASK_COMPLETE,
-                {"task_id": task_id, "feature": feature_request, "status": "completed"},
-            )
 
         return {
             "request": feature_request,
@@ -1509,6 +1570,37 @@ HarnessGenJ 已初始化完成，你可以直接使用以下 API 与项目交互
             "stats": self._collaboration.get_stats(),
             "snapshot": self._collaboration.get_snapshot().model_dump(),
         }
+
+    def get_hybrid_integration_status(self) -> dict[str, Any]:
+        """
+        获取混合集成状态
+
+        Returns:
+            混合集成诊断信息
+        """
+        return self._hybrid_integration.diagnose()
+
+    def get_task_state_status(self) -> dict[str, Any]:
+        """
+        获取任务状态机状态
+
+        Returns:
+            任务状态机统计信息
+        """
+        return self._task_state_machine.get_stats()
+
+    def get_task_history(self, task_id: str) -> list[dict[str, Any]]:
+        """
+        获取任务状态历史
+
+        Args:
+            task_id: 任务ID
+
+        Returns:
+            状态变更历史
+        """
+        history = self._task_state_machine.get_history(task_id)
+        return [event.model_dump() for event in history]
 
     def get_tdd_status(self) -> dict[str, Any] | None:
         """获取 TDD 工作流状态"""
