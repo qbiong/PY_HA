@@ -53,6 +53,20 @@ from harnessgenj.workflow import (
     create_feature_pipeline,
     create_bugfix_pipeline,
     create_adversarial_pipeline,
+    # 新增工作流
+    create_intent_pipeline,
+    create_development_pipeline,
+    create_inquiry_pipeline,
+    create_management_pipeline,
+    get_workflow,
+    list_workflows,
+)
+from harnessgenj.workflow.intent_router import (
+    IntentRouter,
+    IntentType,
+    IntentResult,
+    create_intent_router,
+    identify_intent,
 )
 from harnessgenj.workflow.collaboration import RoleCollaborationManager, create_collaboration_manager
 from harnessgenj.memory import MemoryManager
@@ -214,6 +228,9 @@ class Harness:
 
         # TDD 工作流管理器 - 按需启用
         self._tdd_workflow: TDDWorkflow | None = None
+
+        # 意图识别路由器
+        self._intent_router = create_intent_router()
 
         # 加载之前的工作状态
         if persistent:
@@ -975,12 +992,17 @@ class Harness:
         # 存储到记忆
         self.memory.store_message(message, role)
 
-        # 自动处理用户请求
+        # 自动处理用户请求（使用增强的意图识别）
         task_info = None
+        intent_result = None
         if auto_record and role == "user":
-            if any(kw in message for kw in ["需要", "要", "添加", "新增", "功能"]):
+            # 使用意图识别路由器
+            intent_result = self._intent_router.identify(message)
+
+            # 根据意图类型处理
+            if intent_result.intent_type == IntentType.DEVELOPMENT:
                 task_info = self.receive_request(message, request_type="feature")
-            elif any(kw in message.lower() for kw in ["bug", "问题", "错误", "异常"]):
+            elif intent_result.intent_type == IntentType.BUGFIX:
                 task_info = self.receive_request(message, request_type="bug")
 
         self._save_state()
@@ -989,7 +1011,36 @@ class Harness:
             "message_id": msg.id if msg else None,
             "session_id": self.sessions._active_session_id,
             "task_info": task_info,
+            "intent": intent_result.model_dump() if intent_result else None,
         }
+
+    def analyze_intent(self, message: str) -> IntentResult:
+        """
+        分析用户意图
+
+        Args:
+            message: 用户消息
+
+        Returns:
+            IntentResult: 意图识别结果
+        """
+        return self._intent_router.identify(message)
+
+    def route_to_workflow(self, intent_result: IntentResult) -> WorkflowPipeline | None:
+        """
+        根据意图路由到对应工作流
+
+        Args:
+            intent_result: 意图识别结果
+
+        Returns:
+            WorkflowPipeline: 对应的工作流实例
+        """
+        return get_workflow(intent_result.target_workflow)
+
+    def get_available_workflows(self) -> list[dict[str, str]]:
+        """获取所有可用的工作流"""
+        return list_workflows()
 
     def switch_session(self, session_type: str) -> dict[str, Any]:
         """切换到指定类型的会话"""

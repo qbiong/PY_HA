@@ -8,7 +8,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-395%20passed-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-419%20passed-green.svg)](tests/)
 
 </div>
 
@@ -589,7 +589,65 @@ HarnessGenJ/
 
 ## 更新日志
 
-### v0.7.0 (当前版本)
+### v0.8.0 (当前版本)
+
+**意图识别与工作流重构**
+
+重新设计工作流系统，实现智能意图识别和统一的质量保证流程。
+
+1. **意图识别系统**
+   - 新增 `IntentRouter` 意图识别路由器
+   - 支持多模式匹配（关键词 + 正则表达式）
+   - 自动识别：开发、Bug修复、咨询、管理 四种意图
+   - 提取关键实体（功能名、模块名、问题描述）
+   - 智能路由到对应工作流
+
+2. **工作流重构**
+   - **统一开发流水线**：需求识别 → 架构规划 → 代码编写 → **对抗优化** → 单元测试 → 集成测试
+   - **Bug修复流水线**：问题分析 → 方案设计 → 代码修复 → **对抗验证** → 回归测试 → 集成验证
+   - 所有代码变更强制经过 GAN 对抗审查，保证产出质量
+
+3. **质量门禁系统**
+   - 新增 `QualityGate` 质量门禁定义
+   - 支持：需求完整性、架构评审、代码审查、单元测试、集成测试、覆盖率阈值
+   - 可配置阈值和必需性
+
+4. **工作流类型精简**
+   - 从 4 种工作流精简为 5 种明确职责的工作流
+   - `intent_pipeline`: 意图识别入口
+   - `development_pipeline`: 统一开发（含GAN）
+   - `bugfix_pipeline`: Bug修复（含GAN，默认aggressive）
+   - `inquiry_pipeline`: 问题咨询
+   - `management_pipeline`: 项目管理
+
+5. **测试覆盖**
+   - 新增 24 个意图识别和工作流测试
+   - 总测试数量：419 个（全部通过）
+
+**API 变更**
+
+```python
+# 新增：意图识别
+from harnessgenj.workflow import identify_intent, IntentType
+
+result = identify_intent("目前项目中文字模式和语音模式的切换AI无法理解")
+# result.intent_type = IntentType.BUGFIX
+# result.target_workflow = "bugfix_pipeline"
+# result.priority = "P0"
+
+# 新增：获取工作流
+from harnessgenj.workflow import get_workflow, list_workflows
+
+workflows = list_workflows()  # 列出所有可用工作流
+pipeline = get_workflow("development_pipeline", intensity="aggressive")
+
+# 新增：Engine 集成
+harness = Harness("my_project")
+intent = harness.analyze_intent("我需要一个登录功能")
+pipeline = harness.route_to_workflow(intent)
+```
+
+### v0.7.0
 
 **框架架构优化与功能增强**
 

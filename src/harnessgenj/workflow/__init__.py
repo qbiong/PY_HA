@@ -8,19 +8,53 @@ Harness Engineering 核心理念：通过工作流驱动角色协作
 - Stage: 工作流阶段
 - Handoff: 阶段间的交付物传递
 
-标准工作流:
-需求分析 → 架构设计 → 开发实现 → 测试验证 → 文档编写 → 部署发布
+工作流类型:
+- IntentPipeline: 意图识别与路由
+- DevelopmentPipeline: 统一开发流水线（含GAN对抗）
+- BugFixPipeline: Bug修复流水线（含GAN对抗）
+- InquiryPipeline: 问题咨询流水线
+- ManagementPipeline: 项目管理流水线
+
+质量保证环节（所有代码变更必经）:
+- 需求识别
+- 架构规划
+- 代码编写
+- 对抗优化（GAN）
+- 单元测试
+- 集成测试
 """
 
 from harnessgenj.workflow.pipeline import (
     WorkflowPipeline,
     WorkflowStage,
     StageStatus,
-    AdversarialStageConfig,
+    AdversarialConfig,
+    QualityGate,
+    QualityGateType,
+    create_standard_quality_gates,
+    # 新工作流工厂
+    create_intent_pipeline,
+    create_development_pipeline,
+    create_bugfix_pipeline,
+    create_inquiry_pipeline,
+    create_management_pipeline,
+    get_workflow,
+    list_workflows,
+    WORKFLOW_REGISTRY,
+    # 向后兼容
     create_standard_pipeline,
     create_feature_pipeline,
-    create_bugfix_pipeline,
     create_adversarial_pipeline,
+)
+from harnessgenj.workflow.intent_router import (
+    IntentRouter,
+    IntentType,
+    IntentResult,
+    IntentConfidence,
+    IntentPattern,
+    ExtractedEntity,
+    create_intent_router,
+    identify_intent,
 )
 from harnessgenj.workflow.coordinator import WorkflowCoordinator, create_coordinator
 from harnessgenj.workflow.context import WorkflowContext
@@ -57,12 +91,27 @@ from harnessgenj.workflow.tdd_workflow import (
 )
 
 __all__ = [
+    # Pipeline Core
     "WorkflowPipeline",
     "WorkflowStage",
     "StageStatus",
-    "AdversarialStageConfig",
+    "AdversarialConfig",
+    "QualityGate",
+    "QualityGateType",
+    "create_standard_quality_gates",
+    # Workflow Coordinator
     "WorkflowCoordinator",
     "WorkflowContext",
+    "create_coordinator",
+    # Intent Router
+    "IntentRouter",
+    "IntentType",
+    "IntentResult",
+    "IntentConfidence",
+    "IntentPattern",
+    "ExtractedEntity",
+    "create_intent_router",
+    "identify_intent",
     # Dependency
     "DependencyGraph",
     "TaskNode",
@@ -90,10 +139,17 @@ __all__ = [
     "CoverageReport",
     "RefactorSuggestion",
     "create_tdd_workflow",
-    # Pipelines
-    "create_coordinator",
+    # New Workflows
+    "create_intent_pipeline",
+    "create_development_pipeline",
+    "create_bugfix_pipeline",
+    "create_inquiry_pipeline",
+    "create_management_pipeline",
+    "get_workflow",
+    "list_workflows",
+    "WORKFLOW_REGISTRY",
+    # Backward Compatibility
     "create_standard_pipeline",
     "create_feature_pipeline",
-    "create_bugfix_pipeline",
     "create_adversarial_pipeline",
 ]
