@@ -590,7 +590,39 @@ HarnessGenJ/
 
 ## 更新日志
 
-### v1.2.1 (当前版本)
+### v1.2.2 (当前版本)
+
+**Claude Code Hooks stdin JSON 输入优化**
+
+根据 Claude Code Hooks 官方文档规范，优化 Hooks 输入解析机制。
+
+1. **stdin JSON 输入解析**
+   - 新增 `read_hook_input()` 函数 - 从 stdin 读取完整 JSON，带缓存避免重复读取
+   - 新增 `get_tool_name()` 函数 - 从 stdin JSON 中获取 tool_name 字段
+   - 新增 `get_tool_response()` 函数 - 从 stdin JSON 中获取 tool_response 字段
+   - 修改 `get_tool_input()` 函数 - 优先从 stdin JSON 的 tool_input 字段获取
+
+2. **Claude Code 官方输入格式**
+   ```json
+   {
+     "tool_name": "Write",
+     "tool_input": {
+       "file_path": "/path/to/file",
+       "content": "..."
+     },
+     "tool_response": {...}  // 仅 PostToolUse 有此字段
+   }
+   ```
+
+3. **调试输出增强**
+   - PostToolUse 和 PreToolUse 增加调试输出
+   - 帮助诊断 Hooks 是否正常工作
+
+4. **settings.json 简化**
+   - 简化命令路径，移除环境变量依赖
+   - 增加 timeout 配置（5000ms）
+
+### v1.2.1
 
 **关键修复与测试增强**
 

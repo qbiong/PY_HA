@@ -8,6 +8,67 @@
 
 ## 第零部分：已完成优化
 
+### v1.2.2 Claude Code Hooks stdin JSON 输入优化 ✅
+
+#### 1. stdin JSON 输入解析优化 ✅
+
+**问题**: Claude Code Hooks 未正确传递工具输入参数，导致 `TOOL_INPUT`、`TOOL_INPUT_CONTENT` 等环境变量为空。
+
+**解决方案**:
+根据 Claude Code Hooks 官方文档，输入通过 stdin 传递完整 JSON 对象：
+```json
+{
+    "tool_name": "Write",
+    "tool_input": {"file_path": "...", "content": "..."},
+    "tool_response": {...}  // 仅 PostToolUse 有此字段
+}
+```
+
+**代码变更**:
+```python
+# harnessgenj_hook.py
+
+# 全局缓存，避免重复读取 stdin
+_hook_input_cache: dict | None = None
+
+def read_hook_input() -> dict:
+    """从 stdin 读取完整的 Claude Code Hooks JSON 对象（带缓存）"""
+    global _hook_input_cache
+    if _hook_input_cache is not None:
+        return _hook_input_cache
+    if not sys.stdin.isatty():
+        stdin_content = sys.stdin.read().strip()
+        if stdin_content:
+            _hook_input_cache = json.loads(stdin_content)
+            return _hook_input_cache
+    _hook_input_cache = {}
+    return {}
+
+def get_tool_name() -> str:
+    """从 stdin JSON 中获取 tool_name 字段"""
+    hook_input = read_hook_input()
+    return hook_input.get("tool_name", os.environ.get("TOOL_NAME", ""))
+
+def get_tool_input() -> dict:
+    """从 stdin JSON 中获取 tool_input 字段"""
+    hook_input = read_hook_input()
+    return hook_input.get("tool_input", {})
+```
+
+#### 2. settings.json 简化 ✅
+
+**修改**:
+- 简化命令路径：`python .claude/harnessgenj_hook.py --security`
+- 移除环境变量传递依赖
+- 增加 `timeout: 5000` 配置
+
+#### 3. 调试输出增强 ✅
+
+**修改**:
+- `handle_post_tool_use()` 增加调试输出
+- `handle_pre_tool_use_security()` 增加调试输出
+- 帮助诊断 Hooks 是否正常工作
+
 ### v1.2.1 关键修复与测试增强 ✅
 
 #### 1. 触发链修复 ✅
