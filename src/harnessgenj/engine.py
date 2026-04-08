@@ -977,6 +977,16 @@ class Harness:
         # 注册角色到协作管理器
         self._register_roles_to_collaboration()
 
+        # 【新增】通知工作流开始
+        try:
+            from harnessgenj.notify import get_notifier
+            notifier = get_notifier()
+            pipeline = self.coordinator._workflows.get("feature")
+            stages = list(pipeline._stages.keys()) if pipeline else ["requirement", "design", "development", "testing"]
+            notifier.notify_workflow_start("feature", stages)
+        except Exception:
+            pass
+
         # 广播开发任务开始
         self._collaboration.broadcast(
             from_role="project_manager",
@@ -1069,6 +1079,19 @@ class Harness:
             self._stats.features_developed += 1
             self._stats.workflows_completed += 1
             self.memory.store_message(f"功能开发完成: {feature_request}", "system")
+
+            # 【新增】通知工作流完成
+            try:
+                from harnessgenj.notify import get_notifier
+                notifier = get_notifier()
+                score_changes = notifier.get_score_changes()
+                notifier.notify_workflow_complete(
+                    "feature",
+                    success=True,
+                    summary={"score_changes": len(score_changes)}
+                )
+            except Exception:
+                pass
 
             # 同步进度文档
             self._sync_progress_document()

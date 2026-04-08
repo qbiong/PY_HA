@@ -13,7 +13,7 @@ A Harness Engineering Framework for AI Agent Collaboration
 - 一键执行: 快速完成功能开发/Bug修复
 """
 
-__version__ = "1.2.5"
+__version__ = "1.2.6"
 
 # 主入口
 from harnessgenj.engine import Harness, create_harness
@@ -149,6 +149,17 @@ from harnessgenj.maintenance import (
     PendingConfirmation,
 )
 
+# Notify Module - 用户感知通知
+from harnessgenj.notify import (
+    UserNotifier,
+    NotifierLevel,
+    VerbosityMode,
+    get_notifier,
+    set_notifier,
+    enable_notifier,
+    set_verbosity,
+)
+
 __all__ = [
     # 主入口
     "Harness",
@@ -257,4 +268,12 @@ __all__ = [
     "ConfirmationManager",
     "ConfirmationStatus",
     "PendingConfirmation",
+    # Notify - 用户感知通知
+    "UserNotifier",
+    "NotifierLevel",
+    "VerbosityMode",
+    "get_notifier",
+    "set_notifier",
+    "enable_notifier",
+    "set_verbosity",
 ]

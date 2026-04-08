@@ -480,6 +480,20 @@ class ScoreManager:
 
         self._save()
 
+        # 【新增】通知积分变化
+        try:
+            from harnessgenj.notify import get_notifier
+            notifier = get_notifier()
+            notifier.notify_score_change(
+                role_id=role_id,
+                role_type=self._scores[role_id].role_type,
+                delta=delta,
+                reason=reason or event_type,
+                new_score=self._scores[role_id].score,
+            )
+        except Exception:
+            pass  # 通知失败不影响主流程
+
     # ==================== 查询方法 ====================
 
     def get_recent_events(self, limit: int = 50) -> list[ScoreEvent]:

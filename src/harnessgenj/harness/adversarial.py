@@ -145,6 +145,15 @@ class AdversarialWorkflow:
         self.score_manager.register_role(generator_type, generator_id, generator_type)
         self.score_manager.register_role(discriminator_type, discriminator_id, discriminator_type)
 
+        # 【新增】通知审查开始
+        try:
+            from harnessgenj.notify import get_notifier
+            notifier = get_notifier()
+            reviewer_type = "BugHunter" if use_hunter else "CodeReviewer"
+            notifier.notify_role_action(reviewer_type, "开始代码审查", f"代码长度: {len(code)} 字符")
+        except Exception:
+            pass
+
         # 创建对抗记录
         record = create_adversarial_record(
             generator_id=generator_id,
@@ -186,6 +195,25 @@ class AdversarialWorkflow:
                 ended_at=time.time(),
             )
             record.add_round(adv_round)
+
+            # 【新增】通知发现的问题
+            if not passed:
+                try:
+                    from harnessgenj.notify import get_notifier
+                    notifier = get_notifier()
+                    issue_descriptions = []
+                    for issue in issues[:5]:
+                        if hasattr(issue, 'description'):
+                            issue_descriptions.append(issue.description)
+                        elif hasattr(issue, 'message'):
+                            issue_descriptions.append(issue.message)
+                        else:
+                            issue_descriptions.append(str(issue))
+                    if issue_descriptions:
+                        severity = "critical" if any(hasattr(i, 'severity') and i.severity.value == "critical" for i in issues) else "medium"
+                        notifier.notify_issues_found(issue_descriptions, severity)
+                except Exception:
+                    pass
 
             # 如果通过，结束对抗
             if passed:

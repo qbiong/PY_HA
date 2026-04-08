@@ -214,6 +214,19 @@ class WorkflowCoordinator:
         # 执行阶段
         stage.start()
 
+        # 【新增】通知阶段开始
+        try:
+            from harnessgenj.notify import get_notifier
+            notifier = get_notifier()
+            notifier.notify_stage_start(stage_name, role.role_id)
+            notifier.notify_role_task(
+                role_type=role.role_type.value if hasattr(role, 'role_type') else role.role_id,
+                role_id=role.role_id,
+                task=f"Stage: {stage_name}"
+            )
+        except Exception:
+            pass
+
         task = {
             "type": stage_name,
             "description": stage.description,
@@ -231,6 +244,17 @@ class WorkflowCoordinator:
 
             self._stats.stages_executed += 1
 
+            # 【新增】通知阶段完成
+            try:
+                from harnessgenj.notify import get_notifier
+                notifier = get_notifier()
+                output_summary = ""
+                if result.get("outputs"):
+                    output_summary = str(list(result["outputs"].keys()))[:100]
+                notifier.notify_stage_complete(stage_name, "completed", output_summary)
+            except Exception:
+                pass
+
             return {
                 "status": "completed",
                 "stage": stage_name,
@@ -239,6 +263,15 @@ class WorkflowCoordinator:
             }
 
         stage.fail("Failed to assign task to role")
+
+        # 【新增】通知阶段失败
+        try:
+            from harnessgenj.notify import get_notifier
+            notifier = get_notifier()
+            notifier.notify_stage_complete(stage_name, "failed", "Failed to assign task to role")
+        except Exception:
+            pass
+
         return {"status": "failed", "message": "Failed to assign task"}
 
     def run_workflow(
