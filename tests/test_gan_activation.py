@@ -18,6 +18,7 @@ from unittest.mock import patch, MagicMock
 from harnessgenj import Harness
 from harnessgenj.harness.hybrid_integration import IntegrationMode
 from harnessgenj.workflow.task_state import TaskState
+from harnessgenj.engine import SkipLevel
 
 
 class TestHooksScriptReview:
@@ -188,7 +189,7 @@ class TestGANAdversarialMechanism:
         harness = Harness("test_project", workspace=str(tmp_path / ".harnessgenj"))
 
         # 执行开发（可能没有实际代码产出）
-        result = harness.develop("简单功能", skip_hooks=True)
+        result = harness.develop("简单功能", skip_level=SkipLevel.ALL)
 
         # 验证结果结构
         assert "task_id" in result
@@ -239,7 +240,7 @@ class TestIntegration:
         harness = Harness("test_project", workspace=str(tmp_path / ".harnessgenj"))
 
         # 执行开发
-        result = harness.develop("实现一个简单的工具函数", skip_hooks=True)
+        result = harness.develop("实现一个简单的工具函数", skip_level=SkipLevel.ALL)
 
         # 验证基本结果
         assert result is not None
@@ -254,7 +255,7 @@ class TestIntegration:
         harness = Harness("test_project", workspace=str(tmp_path / ".harnessgenj"))
 
         # 执行 Bug 修复
-        result = harness.fix_bug("修复空指针异常", skip_hooks=True)
+        result = harness.fix_bug("修复空指针异常", skip_level=SkipLevel.ALL)
 
         # 验证结果
         assert result is not None

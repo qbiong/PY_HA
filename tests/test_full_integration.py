@@ -35,6 +35,7 @@ from harnessgenj.memory import MemoryManager
 from harnessgenj.harness.hooks_integration import create_hooks_integration
 from harnessgenj.sync.doc_sync import create_sync_manager
 from harnessgenj.codegen import create_code_generator
+from harnessgenj.engine import SkipLevel
 
 
 class TestFullWorkflowIntegration:
@@ -248,7 +249,7 @@ class TestFullWorkflowIntegration:
     def test_hooks_pre_task(self, harness):
         """测试 Pre-Task Hooks"""
         # 执行带 Hooks 的开发
-        result = harness.develop("实现缓存功能", skip_hooks=False)
+        result = harness.develop("实现缓存功能", skip_level=SkipLevel.NONE)
 
         # 验证 Hooks 被调用（通过统计）
         stats = harness._hooks_integration.get_stats()
@@ -600,7 +601,7 @@ class TestEndToEndWorkflow:
         # 5. 执行开发（带 Hooks）
         dev_result = full_harness.develop(
             "用户注册功能",
-            skip_hooks=False,
+            skip_level=SkipLevel.NONE,
         )
 
         # 6. 验证 Hooks 执行
@@ -634,7 +635,7 @@ class TestEndToEndWorkflow:
         assert result["priority"] == "P0"  # Bug 优先级
 
         # 2. 执行修复
-        fix_result = full_harness.fix_bug("登录超时", skip_hooks=False)
+        fix_result = full_harness.fix_bug("登录超时", skip_level=SkipLevel.NONE)
 
         # 3. 验证统计更新
         stats = full_harness.get_status()

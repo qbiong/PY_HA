@@ -565,8 +565,8 @@ class Developer(AgentRole):
         if self._pm_callback:
             try:
                 self._pm_callback(
-                    role_type="developer",
-                    artifact={
+                    "developer",  # 位置参数
+                    {
                         "code": result.get("outputs", {}).get("code", ""),
                         "tests": result.get("outputs", {}).get("tests", ""),
                         "status": result.get("status", ""),

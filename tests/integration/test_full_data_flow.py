@@ -16,6 +16,7 @@ from pathlib import Path
 from harnessgenj import Harness
 from harnessgenj.harness.hybrid_integration import IntegrationMode
 from harnessgenj.workflow.task_state import TaskState
+from harnessgenj.engine import SkipLevel
 
 
 class TestFullDataFlow:
@@ -36,7 +37,7 @@ class TestFullDataFlow:
         harness._hybrid_integration.force_mode(IntegrationMode.BUILTIN)
 
         # 执行开发
-        result = harness.develop("实现测试功能", skip_hooks=True)
+        result = harness.develop("实现测试功能", skip_level=SkipLevel.ALL)
 
         # 验证任务创建
         assert result["task_id"] is not None

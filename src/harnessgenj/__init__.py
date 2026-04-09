@@ -13,7 +13,7 @@ A Harness Engineering Framework for AI Agent Collaboration
 - 一键执行: 快速完成功能开发/Bug修复
 """
 
-__version__ = "1.2.8"
+__version__ = "1.3.0"
 
 # 主入口
 from harnessgenj.engine import Harness, create_harness
@@ -166,6 +166,12 @@ from harnessgenj.notify import (
     set_verbosity,
 )
 
+# Dashboard Module - 终端仪表板
+from harnessgenj.dashboard import (
+    TerminalDashboard,
+    render_dashboard,
+)
+
 __all__ = [
     # 主入口
     "Harness",
@@ -288,4 +294,7 @@ __all__ = [
     "set_notifier",
     "enable_notifier",
     "set_verbosity",
+    # Dashboard - 终端仪表板
+    "TerminalDashboard",
+    "render_dashboard",
 ]

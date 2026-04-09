@@ -6,12 +6,16 @@
 - 阶段执行状态
 - 角色任务处理
 - GAN 积分变化实时通知
+- 进度追踪
+- JSON 输出格式支持
 """
 
 import sys
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Any, Callable
+from io import StringIO
 
 
 class NotifierLevel(Enum):
@@ -29,6 +33,12 @@ class VerbosityMode(Enum):
     SIMPLE = "simple"      # 只输出关键节点
     DETAILED = "detailed"  # 输出所有信息（默认）
     DEBUG = "debug"        # 包含调试信息
+
+
+class OutputFormat(Enum):
+    """输出格式"""
+    TERMINAL = "terminal"  # 终端格式（默认）
+    JSON = "json"          # JSON 格式
 
 
 class UserNotifier:
@@ -64,6 +74,7 @@ class UserNotifier:
         output: Any = None,
         verbosity: VerbosityMode = VerbosityMode.DETAILED,
         on_score_change: Callable | None = None,
+        format: OutputFormat = OutputFormat.TERMINAL,
     ):
         """
         初始化通知器
@@ -73,18 +84,46 @@ class UserNotifier:
             output: 输出目标（默认 stderr）
             verbosity: 详细程度模式
             on_score_change: 积分变化回调（可选）
+            format: 输出格式（TERMINAL/JSON）
         """
         self.enabled = enabled
         self._output = output or sys.stderr
         self._verbosity = verbosity
         self._on_score_change = on_score_change
+        self._format = format
         self._indent = 0
         self._workflow_start_time: datetime | None = None
         self._current_workflow: str = ""
         self._score_changes: list[dict] = []
+        self._buffer: StringIO | None = None  # 输出缓冲
+        self._progress: dict[str, float] = {}  # 进度追踪
+
+    def set_format(self, format: OutputFormat) -> None:
+        """
+        设置输出格式
+
+        Args:
+            format: 输出格式（TERMINAL/JSON）
+        """
+        self._format = format
+
+    def enable_buffer(self) -> None:
+        """启用输出缓冲（用于测试）"""
+        self._buffer = StringIO()
+
+    def get_buffer(self) -> str:
+        """获取缓冲内容"""
+        if self._buffer:
+            return self._buffer.getvalue()
+        return ""
+
+    def clear_buffer(self) -> None:
+        """清空缓冲"""
+        if self._buffer:
+            self._buffer = StringIO()
 
     def _emit(self, message: str, level: NotifierLevel = NotifierLevel.INFO):
-        """输出消息到 stderr"""
+        """输出消息"""
         if not self.enabled:
             return
 
@@ -97,7 +136,21 @@ class UserNotifier:
         icon = self.ICONS.get(level, "")
         indent = "  " * self._indent
 
-        # 构建消息
+        # 根据格式选择输出方式
+        if self._format == OutputFormat.JSON:
+            self._emit_json(message, level, timestamp, indent)
+        else:
+            self._emit_terminal(message, level, timestamp, icon, indent)
+
+    def _emit_terminal(
+        self,
+        message: str,
+        level: NotifierLevel,
+        timestamp: str,
+        icon: str,
+        indent: str,
+    ):
+        """终端格式输出"""
         parts = [self.PREFIX, f"[{timestamp}]"]
         if indent:
             parts.append(indent)
@@ -106,7 +159,25 @@ class UserNotifier:
         parts.append(message)
 
         line = " ".join(parts)
-        print(line, file=self._output)
+        output_target = self._buffer or self._output
+        print(line, file=output_target)
+
+    def _emit_json(
+        self,
+        message: str,
+        level: NotifierLevel,
+        timestamp: str,
+        indent: str,
+    ):
+        """JSON 格式输出"""
+        output = {
+            "timestamp": datetime.now().isoformat(),
+            "level": level.value,
+            "message": message,
+            "indent": self._indent,
+        }
+        output_target = self._buffer or self._output
+        print(json.dumps(output, ensure_ascii=False), file=output_target)
 
     def notify_workflow_start(self, workflow: str, stages: list[str]):
         """
@@ -507,6 +578,93 @@ class UserNotifier:
         self._workflow_start_time = None
         self._current_workflow = ""
         self._score_changes = []
+        self._progress = {}
+
+    # ==================== 新增：进度追踪功能 ====================
+
+    def notify_progress(
+        self,
+        operation: str,
+        progress: float,
+        total: float,
+        message: str = "",
+    ):
+        """
+        通知进度更新
+
+        Args:
+            operation: 操作名称
+            progress: 当前进度
+            total: 总进度
+            message: 可选消息
+        """
+        self._progress[operation] = progress
+
+        if self._format == OutputFormat.JSON:
+            output = {
+                "timestamp": datetime.now().isoformat(),
+                "level": "PROGRESS",
+                "operation": operation,
+                "progress": progress,
+                "total": total,
+                "percentage": round(progress / total * 100, 1) if total > 0 else 0,
+                "message": message,
+            }
+            output_target = self._buffer or self._output
+            print(json.dumps(output, ensure_ascii=False), file=output_target)
+        else:
+            bar = self._render_progress_bar(progress, total)
+            msg = f"⏳ {operation} {bar}"
+            if message:
+                msg += f" {message}"
+            self._emit(msg, NotifierLevel.INFO)
+
+    def _render_progress_bar(
+        self,
+        progress: float,
+        total: float,
+        width: int = 20,
+    ) -> str:
+        """
+        渲染 ASCII 进度条
+
+        Args:
+            progress: 当前进度
+            total: 总进度
+            width: 进度条宽度
+
+        Returns:
+            进度条字符串，如 "[=====>    ] 50%"
+        """
+        if total <= 0:
+            return "[----------] 0%"
+
+        ratio = min(1.0, max(0.0, progress / total))
+        filled = int(width * ratio)
+
+        # 使用 ASCII 字符渲染
+        bar = "=" * filled
+        if filled < width:
+            bar += ">"
+            bar += "-" * (width - filled - 1)
+
+        percentage = round(ratio * 100)
+        return f"[{bar}] {percentage}%"
+
+    def complete_progress(self, operation: str):
+        """
+        完成进度
+
+        Args:
+            operation: 操作名称
+        """
+        if operation in self._progress:
+            del self._progress[operation]
+        self._emit(f"✓ {operation} 完成", NotifierLevel.SUCCESS)
+
+    def get_progress(self, operation: str) -> float | None:
+        """获取操作进度"""
+        return self._progress.get(operation)
 
 
 # ==================== 全局通知器管理 ====================
@@ -551,6 +709,7 @@ __all__ = [
     "UserNotifier",
     "NotifierLevel",
     "VerbosityMode",
+    "OutputFormat",
     "get_notifier",
     "set_notifier",
     "enable_notifier",

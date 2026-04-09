@@ -5,6 +5,85 @@ All notable changes to HarnessGenJ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-04-09
+
+### Added
+- **MCP Server 模块**: 框架作为 MCP Server 暴露工具，让 Claude Code 可直接调用
+  - 19 个内置工具：内存管理(6)、任务管理(6)、存储(4)、系统(3)
+  - JSON-RPC 2.0 协议支持
+  - stdio 通信模式
+  - 工具注册和执行机制
+- **Notify 模块增强**: 新增输出格式和进度追踪
+  - JSON 输出格式支持 (`OutputFormat.JSON`)
+  - ASCII 进度条渲染
+  - 输出缓冲机制（用于测试）
+  - 进度追踪 API (`notify_progress`, `complete_progress`)
+- **TUI 仪表板模块**: 轻量级终端可视化界面
+  - ASCII 艺术渲染
+  - 项目状态概览
+  - 积分排行榜
+  - 任务进度展示
+  - 零外部依赖
+- **工具基类**: `MCPTool` 抽象基类，支持自定义工具扩展
+- **工具注册表**: `ToolRegistry` 管理工具注册和发现
+- **测试覆盖率提升**: 从 72% 提升至 73.57%
+  - 新增 roles 模块测试：Developer、CodeReviewer、BugHunter、Tester
+  - 修复了 `skip_hooks` 参数迁移遗留问题
+  - 总测试用例达到 1013 个
+
+### New Files
+- `src/harnessgenj/mcp/__init__.py` - MCP 模块导出
+- `src/harnessgenj/mcp/server.py` - MCP Server 核心实现
+- `src/harnessgenj/mcp/protocol.py` - JSON-RPC 协议
+- `src/harnessgenj/mcp/config.py` - 配置定义
+- `src/harnessgenj/mcp/tools/*.py` - 工具实现
+- `src/harnessgenj/dashboard/__init__.py` - Dashboard 模块导出
+- `src/harnessgenj/dashboard/tui.py` - 终端仪表板实现
+- `tests/mcp/test_mcp.py` - MCP 模块测试 (41 个测试用例)
+- `tests/notify/test_notify_enhanced.py` - Notify 增强测试 (17 个测试用例)
+- `tests/roles/test_developer.py` - Developer 角色测试 (31 个测试用例)
+- `tests/roles/test_code_reviewer.py` - CodeReviewer 角色测试 (19 个测试用例)
+- `tests/roles/test_bug_hunter.py` - BugHunter 角色测试 (19 个测试用例)
+- `tests/roles/test_tester.py` - Tester 角色测试 (18 个测试用例)
+- `tests/dashboard/test_dashboard.py` - Dashboard 测试 (13 个测试用例)
+
+### Fixed
+- 修复测试中 `skip_hooks=True` 参数遗留问题，替换为 `skip_level=SkipLevel.ALL`
+- 修复 Developer `_report_to_pm` 方法参数传递问题
+
+### Purpose
+- MCP Server：解决 AI 不主动调用框架的根本问题
+- Notify 增强：提升用户体验，支持更多输出格式
+- TUI 仪表板：提供轻量级可视化界面
+- 测试补充：确保代码健壮性，roles 模块覆盖率显著提升
+
+## [1.2.9] - 2026-04-09
+
+### Added
+- **MCP Server 模块**: 框架作为 MCP Server 暴露工具，让 Claude Code 可直接调用
+  - 19 个内置工具：内存管理(6)、任务管理(6)、存储(4)、系统(3)
+  - JSON-RPC 2.0 协议支持
+  - stdio 通信模式
+  - 工具注册和执行机制
+- **工具基类**: `MCPTool` 抽象基类，支持自定义工具扩展
+- **工具注册表**: `ToolRegistry` 管理工具注册和发现
+- **协议层**: 完整的 JSON-RPC 请求/响应处理
+
+### New Files
+- `src/harnessgenj/mcp/__init__.py` - 模块导出
+- `src/harnessgenj/mcp/server.py` - MCP Server 核心实现
+- `src/harnessgenj/mcp/protocol.py` - JSON-RPC 协议
+- `src/harnessgenj/mcp/config.py` - 配置定义
+- `src/harnessgenj/mcp/tools/__init__.py` - 工具基类
+- `src/harnessgenj/mcp/tools/memory_tools.py` - 内存工具
+- `src/harnessgenj/mcp/tools/task_tools.py` - 任务工具
+- `src/harnessgenj/mcp/tools/system_tools.py` - 系统工具
+- `src/harnessgenj/mcp/tools/storage_tools.py` - 存储工具
+- `tests/mcp/test_mcp.py` - MCP 模块测试 (41 个测试用例)
+
+### Purpose
+解决 AI 不主动调用框架的根本问题，通过 MCP 协议让 Claude Code 原生集成框架功能。
+
 ## [1.2.8] - 2026-04-09
 
 ### Added
