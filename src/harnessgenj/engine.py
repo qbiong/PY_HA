@@ -175,7 +175,74 @@ class Harness:
     持久化支持:
     - 默认开启持久化，数据保存在 .harnessgenj/ 目录
     - 重启后自动加载之前的工作内容
+
+    状态检测:
+    - is_initialized(): 检查框架是否已初始化（静态方法）
+    - get_initialization_status(): 获取初始化状态详情（静态方法）
     """
+
+    # ==================== 静态状态管理 ====================
+    # 用于 Hooks 和外部检测框架是否已初始化
+    _instance_initialized: bool = False
+    _current_project_path: str | None = None
+    _active_workflow_id: str | None = None
+    _active_roles: dict[str, str] = {}  # role_id -> role_type
+    _last_instance: "Harness | None" = None
+
+    @classmethod
+    def is_initialized(cls) -> bool:
+        """
+        检查框架是否已初始化（静态方法）
+
+        用于 Hooks 脚本检测框架状态，判断是否需要提醒用户。
+
+        Returns:
+            True 如果框架已初始化，False 否则
+
+        使用示例:
+            if not Harness.is_initialized():
+                print("请先初始化框架: harness = Harness.from_project('.')")
+        """
+        return cls._instance_initialized
+
+    @classmethod
+    def get_initialization_status(cls) -> dict[str, Any]:
+        """
+        获取初始化状态详情（静态方法）
+
+        Returns:
+            包含以下信息的状态字典:
+            - initialized: 是否已初始化
+            - project_path: 当前项目路径
+            - active_workflow: 当前活动工作流ID
+            - active_roles: 当前活动角色列表
+            - last_instance_available: 是否有实例可用
+
+        使用示例:
+            status = Harness.get_initialization_status()
+            if not status["initialized"]:
+                show_framework_guide()
+        """
+        return {
+            "initialized": cls._instance_initialized,
+            "project_path": cls._current_project_path,
+            "active_workflow": cls._active_workflow_id,
+            "active_roles": list(cls._active_roles.keys()),
+            "roles_by_type": cls._active_roles.copy(),
+            "last_instance_available": cls._last_instance is not None,
+        }
+
+    @classmethod
+    def get_last_instance(cls) -> "Harness | None":
+        """
+        获取最后一个 Harness 实例（静态方法）
+
+        用于 Hooks 或其他模块访问当前框架实例。
+
+        Returns:
+            最后一个 Harness 实例，如果未初始化则返回 None
+        """
+        return cls._last_instance
 
     def __init__(
         self,
@@ -327,6 +394,65 @@ class Harness:
         # 生成初始监控报告（帮助用户了解框架状态）
         self._generate_initial_monitor_report()
 
+        # ==================== 新增：静态状态更新 ====================
+        # 更新静态状态，供 Hooks 和外部检测
+        Harness._instance_initialized = True
+        Harness._current_project_path = self._workspace
+        Harness._last_instance = self
+
+        # ==================== 新增：框架主动输出 ====================
+        # 初始化完成后主动输出框架状态和使用指南
+        self._announce_initialization()
+
+    def _announce_initialization(self) -> None:
+        """
+        宣布框架已初始化（主动输出机制）
+
+        在框架初始化完成后，主动向用户输出：
+        1. 框架已就绪的状态信息
+        2. 项目基本信息
+        3. 下一步操作建议
+
+        这确保用户清楚地知道框架已准备好，应该如何使用。
+        """
+        try:
+            from harnessgenj.notify import get_notifier, NotifierLevel
+            notifier = get_notifier()
+
+            # 输出框架初始化成功信息
+            notifier._emit("━" * 60, NotifierLevel.INFO)
+            notifier._emit("  ✅ HarnessGenJ 框架已就绪", NotifierLevel.INFO)
+            notifier._emit(f"  项目: {self.project_name}", NotifierLevel.INFO)
+            notifier._emit(f"  工作空间: {self._workspace}", NotifierLevel.INFO)
+
+            # 输出团队状态
+            team_size = self._stats.team_size
+            if team_size > 0:
+                notifier._emit(f"  团队: {team_size} 个角色已就绪", NotifierLevel.INFO)
+
+            # 输出技术栈（如果有）
+            tech_stack = self.memory.project_info.tech_stack if hasattr(self.memory, 'project_info') else None
+            if tech_stack:
+                notifier._emit(f"  技术栈: {tech_stack}", NotifierLevel.INFO)
+
+            # 输出下一步操作建议
+            notifier._emit("", NotifierLevel.INFO)
+            notifier._emit("  📋 下一步操作:", NotifierLevel.INFO)
+            notifier._emit("     harness.develop('需求描述')  # 开发功能", NotifierLevel.INFO)
+            notifier._emit("     harness.fix_bug('问题描述')  # 修复Bug", NotifierLevel.INFO)
+            notifier._emit("     harness.get_status()        # 查看状态", NotifierLevel.INFO)
+
+            # 输出积分系统提示
+            notifier._emit("", NotifierLevel.INFO)
+            notifier._emit("  💡 提示: 使用框架开发可获得积分奖励", NotifierLevel.INFO)
+            notifier._emit("     高积分 = 高职业信誉 = 团队核心成员", NotifierLevel.INFO)
+
+            notifier._emit("━" * 60, NotifierLevel.INFO)
+
+        except Exception:
+            # 主动输出失败不影响框架功能
+            pass
+
     @classmethod
     def from_project(
         cls,
@@ -426,6 +552,10 @@ class Harness:
 
         # 提取项目信息
         harness._extract_project_info(documents, project_path)
+
+        # ==================== 新增：更新静态状态 ====================
+        # 更新项目路径为实际项目路径（而非 workspace）
+        Harness._current_project_path = project_path
 
         return harness
 
@@ -739,6 +869,9 @@ class Harness:
 
                 # 注册到积分系统
                 self._score_manager.register_role(role_type_str, role_id, name)
+
+                # ==================== 新增：更新静态状态 ====================
+                Harness._active_roles[role_id] = role_type_str
 
         self._stats.team_size = len(created)
         self._dirty = True
@@ -1106,8 +1239,14 @@ class Harness:
         if use_tdd:
             return self._develop_with_tdd(feature_request, task_id, skip_level, admin_override)
 
+        # ==================== 新增：更新活动工作流状态 ====================
+        Harness._active_workflow_id = "feature"
+
         # 执行开发工作流
         result = self.coordinator.run_workflow("feature", {"feature_request": feature_request})
+
+        # 清除活动工作流状态
+        Harness._active_workflow_id = None
 
         if result.get("status") == "completed":
             # ==================== 新增：内置对抗触发 ====================

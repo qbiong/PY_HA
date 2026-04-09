@@ -5,6 +5,32 @@ All notable changes to HarnessGenJ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.8] - 2026-04-09
+
+### Added
+- **框架主动输出机制**: 初始化时主动输出框架状态和使用指南
+  - 初始化完成时自动输出框架已就绪信息
+  - 输出项目基本信息（名称、工作空间、团队、技术栈）
+  - 输出下一步操作建议（develop/fix_bug/get_status）
+  - 输出积分系统提示
+- **框架状态检测机制**: 提供静态方法供 Hooks 和外部检测框架状态
+  - `Harness.is_initialized()` - 检查框架是否已初始化
+  - `Harness.get_initialization_status()` - 获取详细初始化状态
+  - `Harness.get_last_instance()` - 获取最后创建的框架实例
+  - 状态包含：项目路径、活动工作流、活动角色等
+- **CLAUDE.md 项目级指令**: 确保 AI 主动使用框架
+  - 强制声明：所有开发任务必须通过框架执行
+  - 框架初始化和使用代码示例
+  - 开发流程规范和检查清单
+  - 角色边界定义和违规后果
+  - API 速查表
+
+### Purpose
+解决 AI 不主动调用框架的问题：
+- CLAUDE.md 作为项目级指令，直接影响 AI 行为
+- 框架初始化时主动输出，提醒用户框架已就绪
+- 状态检测机制让 Hooks 可判断是否需要提醒用户
+
 ## [1.2.7] - 2026-04-09
 
 ### Added
