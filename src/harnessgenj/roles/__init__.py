@@ -11,6 +11,7 @@ Harness Engineering 核心理念：用真实团队角色替代抽象概念
 
 生成器角色（产出）:
 - Developer: 开发人员，负责编码实现（工具: read, search, edit_code, terminal）
+  - 方案C增强：支持动态配置，可创建 FrontendDeveloper/BackendDeveloper/FullStackDeveloper 实例
 - Tester: 测试人员，负责测试编写（工具: read, search, edit_code, terminal）
 - ProductManager: 产品经理，负责需求管理（工具: read, search, edit_doc）
 - Architect: 架构师，负责技术方案（工具: read, search, edit_doc）
@@ -35,7 +36,15 @@ from harnessgenj.roles.base import (
     ROLE_TOOL_PERMISSIONS,
     create_role,
 )
-from harnessgenj.roles.developer import Developer, create_developer
+from harnessgenj.roles.developer import (
+    Developer,
+    DeveloperConfig,
+    DeveloperContext,
+    create_developer,
+    create_frontend_developer,
+    create_backend_developer,
+    create_fullstack_developer,
+)
 from harnessgenj.roles.tester import Tester, create_tester
 from harnessgenj.roles.product_manager import ProductManager, create_product_manager
 from harnessgenj.roles.architect import Architect, create_architect
@@ -60,6 +69,8 @@ __all__ = [
     "ROLE_TOOL_PERMISSIONS",
     # 生成器角色
     "Developer",
+    "DeveloperConfig",  # 方案C：动态配置
+    "DeveloperContext",
     "Tester",
     "ProductManager",
     "Architect",
@@ -70,6 +81,9 @@ __all__ = [
     "BugHunter",
     # 便捷函数
     "create_developer",
+    "create_frontend_developer",  # 方案C：前端开发便捷函数
+    "create_backend_developer",    # 方案C：后端开发便捷函数
+    "create_fullstack_developer",  # 方案C：全栈开发便捷函数
     "create_tester",
     "create_product_manager",
     "create_architect",

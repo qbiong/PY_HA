@@ -59,6 +59,16 @@ class RoleScore(BaseModel):
     issues_false_positive: int = Field(default=0, description="误报数")
     issues_missed: int = Field(default=0, description="漏报数")
 
+    # 恢复机制追踪（新增）
+    consecutive_clean_tasks: int = Field(default=0, description="连续无问题任务数")
+    last_deduction_time: float | None = Field(default=None, description="最后一次扣分时间")
+    error_type_history: dict[str, int] = Field(default_factory=dict, description="错误类型重复计数")
+
+    # 角色状态（新增）
+    is_terminated: bool = Field(default=False, description="是否已终止")
+    termination_reason: str | None = Field(default=None, description="终止原因")
+    replacement_count: int = Field(default=0, description="角色替换次数（第几代）")
+
     # 时间戳
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
@@ -94,55 +104,99 @@ class RoleScore(BaseModel):
 
 
 class ScoreRules:
-    """积分规则常量"""
+    """
+    积分规则常量
 
-    # ========== 生成器角色积分规则 ==========
+    方案D：GAN式对抗积分系统
+    - 分层扣分梯度：根据问题严重程度差异化扣分
+    - 角色淘汰机制：分数低于阈值触发角色终止
+    - 恢复机制：连续无问题任务恢复积分
+    - PM问责：频繁换人时PM连带扣分
+    """
 
-    # 成功奖励
-    ONE_ROUND_PASS = 10       # 一轮通过审查
-    TWO_ROUND_PASS = 5        # 二轮通过
-    THREE_ROUND_PASS = 2      # 三轮及以上通过
+    # ========== 淘汰与警告阈值 ==========
 
-    # 失败惩罚
-    BUG_FOUND_MINOR = -3      # 发现小问题
-    BUG_FOUND_MAJOR = -5      # 发现中等问题
-    BUG_FOUND_CRITICAL = -10  # 发现严重问题
-    PRODUCTION_BUG = -20      # 生产环境Bug
+    TERMINATION_THRESHOLD = 30    # 淘汰阈值：分数 < 30 触发角色终止
+    WARNING_THRESHOLD = 50       # 警告阈值：分数 < 50 进入观察期
+    INITIAL_SCORE = 100          # 初始积分
+
+    # ========== 生成器角色奖励规则（增强正向激励） ==========
+
+    ONE_ROUND_PASS = 15       # 一轮通过审查（质量优秀）
+    TWO_ROUND_PASS = 10       # 二轮通过（质量良好）
+    THREE_ROUND_PASS = 5      # 三轮通过（质量一般）
+    FOUR_PLUS_ROUND = 2       # 四轮及以上通过（质量较差）
+
+    # ========== 生成器角色扣分梯度（分层扣分） ==========
+
+    # 问题严重程度分级
+    ISSUE_MINOR = -4          # 小问题：命名、注释、格式问题
+    ISSUE_MEDIUM = -8         # 中问题：逻辑错误、测试不足、边界缺失
+    ISSUE_MAJOR = -15         # 大问题：设计缺陷、接口错误、架构问题
+    SECURITY_VULNERABILITY = -25  # 安全漏洞：SQL注入、XSS、权限绕过
+    PRODUCTION_BUG = -40      # 生产Bug：触发淘汰检查
 
     # 误报补偿
-    FALSE_POSITIVE_BONUS = 3  # 被误报补偿
+    FALSE_POSITIVE_BONUS = 5  # 被误报补偿（提升）
 
-    # ========== 判别器角色积分规则 ==========
+    # ========== 判别器角色奖励规则（激励发现问题） ==========
 
-    # 发现奖励
-    FIND_MINOR = 2            # 发现小问题
-    FIND_MAJOR = 4            # 发现中等问题
-    FIND_CRITICAL = 6         # 发现严重问题
-    PREVENT_PRODUCTION = 10   # 阻止生产Bug
+    FIND_MINOR = 5            # 发现小问题奖励
+    FIND_MEDIUM = 10          # 发现中问题奖励
+    FIND_MAJOR = 18           # 发现大问题奖励
+    FIND_SECURITY = 30        # 发现安全漏洞奖励
+    PREVENT_PRODUCTION = 45   # 阻止生产Bug奖励
 
-    # 失误惩罚
-    FALSE_POSITIVE = -2       # 误报
+    # ========== 判别器角色失误惩罚 ==========
+
+    FALSE_POSITIVE = -10      # 误报惩罚（提升）
     MISSED_BUG = -8           # 漏报真实Bug
     MISSED_CRITICAL = -15     # 漏报严重Bug
+    MISSED_SECURITY = -25     # 漏报安全漏洞
 
-    # ========== 违规惩罚规则（新增） ==========
+    # ========== 恢复机制规则 ==========
+
+    CONSECUTIVE_CLEAN_3 = 5    # 连续3次无问题任务恢复积分
+    CONSECUTIVE_CLEAN_5 = 8    # 连续5次无问题任务额外奖励
+    WEEK_NO_DEDUCTION = 10     # 一周无扣分记录恢复积分
+    REPEAT_ERROR_MULTIPLIER = 1.5  # 同类错误重复扣分翻倍系数
+
+    # ========== PM问责机制 ==========
+
+    PM_SINGLE_REPLACEMENT_PENALTY = -10  # 单角色换人 > 2次/月
+    PM_TEAM_REPLACEMENT_PENALTY = -30    # 团队换人 > 5次/月
+    PM_TERMINATION_THRESHOLD = 30        # PM淘汰阈值
+
+    # ========== 违规惩罚规则 ==========
 
     BOUNDARY_VIOLATION = -5      # 边界违规
     PERMISSION_DENIED = -3       # 权限拒绝
     GATE_BYPASS_ATTEMPT = -10    # 尝试绕过门禁
     UNAUTHORIZED_CODE_EDIT = -15 # 未授权修改代码
 
-    # ========== 合规奖励规则（新增） ==========
+    # ========== 合规奖励规则 ==========
 
-    PROCESS_COMPLIANCE = +2      # 流程合规奖励
-    QUALITY_GATE_PASS = +3       # 质量门禁通过
+    PROCESS_COMPLIANCE = 2      # 流程合规奖励
+    QUALITY_GATE_PASS = 3       # 质量门禁通过
 
     # ========== 严重程度映射 ==========
 
     SEVERITY_MULTIPLIER = {
         "minor": 1,
+        "medium": 1.5,
         "major": 2,
         "critical": 3,
+        "security": 4,
+    }
+
+    # ========== 问题类型分类 ==========
+
+    ISSUE_CATEGORIES = {
+        "minor": ["命名不规范", "注释缺失", "格式问题", "代码风格"],
+        "medium": ["逻辑错误", "测试不足", "边界检查缺失", "异常处理不当"],
+        "major": ["设计缺陷", "接口错误", "架构问题", "性能瓶颈"],
+        "security": ["SQL注入", "XSS漏洞", "权限绕过", "敏感信息泄露"],
+        "production": ["生产环境Bug", "服务宕机", "数据丢失"],
     }
 
 
@@ -326,25 +380,25 @@ class ScoreManager:
         severity = severity.lower()
         multiplier = ScoreRules.SEVERITY_MULTIPLIER.get(severity, 1)
 
-        # 生成器扣分
+        # 生成器扣分（使用新的分层扣分规则）
         if severity == "critical":
-            gen_delta = ScoreRules.BUG_FOUND_CRITICAL
+            gen_delta = ScoreRules.ISSUE_MAJOR
         elif severity == "major":
-            gen_delta = ScoreRules.BUG_FOUND_MAJOR
+            gen_delta = ScoreRules.ISSUE_MEDIUM
         else:
-            gen_delta = ScoreRules.BUG_FOUND_MINOR
+            gen_delta = ScoreRules.ISSUE_MINOR
 
-        gen_delta *= multiplier
+        gen_delta = int(gen_delta * multiplier)
 
-        # 判别器加分
+        # 判别器加分（使用新的奖励规则）
         if severity == "critical":
-            disc_delta = ScoreRules.FIND_CRITICAL
-        elif severity == "major":
             disc_delta = ScoreRules.FIND_MAJOR
+        elif severity == "major":
+            disc_delta = ScoreRules.FIND_MEDIUM
         else:
             disc_delta = ScoreRules.FIND_MINOR
 
-        disc_delta *= multiplier
+        disc_delta = int(disc_delta * multiplier)
 
         # 应用变更
         self._apply_delta(
@@ -743,8 +797,537 @@ class ScoreManager:
                 self._scores[role_id].issues_valid = 0
                 self._scores[role_id].issues_false_positive = 0
                 self._scores[role_id].issues_missed = 0
+                self._scores[role_id].consecutive_clean_tasks = 0
+                self._scores[role_id].last_deduction_time = None
+                self._scores[role_id].error_type_history = {}
         else:
             self._scores.clear()
             self._events.clear()
 
         self._save()
+
+    # ==================== 角色淘汰机制（新增） ====================
+
+    def check_termination(self, role_id: str) -> dict[str, Any]:
+        """
+        检查角色是否应该被淘汰
+
+        Args:
+            role_id: 角色ID
+
+        Returns:
+            检查结果字典，包含：
+            - should_terminate: 是否应该终止
+            - should_warn: 是否需要警告
+            - current_score: 当前分数
+            - threshold: 阈值类型
+        """
+        with self._lock:
+            role_score = self._scores.get(role_id)
+            if not role_score:
+                return {"should_terminate": False, "should_warn": False, "current_score": 0}
+
+            current_score = role_score.score
+
+            # 检查淘汰条件
+            if current_score < ScoreRules.TERMINATION_THRESHOLD:
+                return {
+                    "should_terminate": True,
+                    "should_warn": True,
+                    "current_score": current_score,
+                    "threshold": "termination",
+                    "reason": f"积分 {current_score} < 淘汰阈值 {ScoreRules.TERMINATION_THRESHOLD}",
+                }
+
+            # 检查警告条件
+            if current_score < ScoreRules.WARNING_THRESHOLD:
+                return {
+                    "should_terminate": False,
+                    "should_warn": True,
+                    "current_score": current_score,
+                    "threshold": "warning",
+                    "reason": f"积分 {current_score} < 警告阈值 {ScoreRules.WARNING_THRESHOLD}",
+                }
+
+            return {
+                "should_terminate": False,
+                "should_warn": False,
+                "current_score": current_score,
+                "threshold": "normal",
+            }
+
+    def terminate_role(self, role_id: str, reason: str = "积分低于淘汰阈值") -> dict[str, Any]:
+        """
+        终止角色并记录历史
+
+        Args:
+            role_id: 角色ID
+            reason: 终止原因
+
+        Returns:
+            终止结果，包含新角色命名建议
+        """
+        with self._lock:
+            role_score = self._scores.get(role_id)
+            if not role_score:
+                return {"success": False, "reason": "角色不存在"}
+
+            # 标记终止
+            role_score.is_terminated = True
+            role_score.termination_reason = reason
+            role_score.updated_at = time.time()
+
+            # 记录事件
+            event = ScoreEvent(
+                role_type=role_score.role_type,
+                role_id=role_id,
+                event_type="role_terminated",
+                delta=0,
+                reason=f"角色终止: {reason}",
+            )
+            self._events.append(event)
+
+            # 计算下一代角色命名
+            role_type = role_score.role_type
+            replacement_count = role_score.replacement_count + 1
+            new_role_id = f"{role_type}_{replacement_count}"
+
+            self._save()
+
+            return {
+                "success": True,
+                "terminated_role_id": role_id,
+                "new_role_id_suggestion": new_role_id,
+                "replacement_count": replacement_count,
+                "role_type": role_type,
+            }
+
+    def create_replacement_role(
+        self,
+        old_role_id: str,
+        new_role_id: str,
+        role_type: str,
+        role_name: str = "",
+    ) -> RoleScore:
+        """
+        创建替换角色（继承历史计数）
+
+        Args:
+            old_role_id: 原角色ID
+            new_role_id: 新角色ID
+            role_type: 角色类型
+            role_name: 角色名称
+
+        Returns:
+            新角色积分对象
+        """
+        with self._lock:
+            # 获取原角色的替换计数
+            old_score = self._scores.get(old_role_id)
+            replacement_count = (old_score.replacement_count + 1) if old_score else 1
+
+            # 创建新角色
+            new_score = RoleScore(
+                role_type=role_type,
+                role_id=new_role_id,
+                role_name=role_name or f"{role_type}_v{replacement_count}",
+                score=ScoreRules.INITIAL_SCORE,
+                replacement_count=replacement_count,
+            )
+            self._scores[new_role_id] = new_score
+
+            # 记录事件
+            event = ScoreEvent(
+                role_type=role_type,
+                role_id=new_role_id,
+                event_type="role_replacement",
+                delta=0,
+                reason=f"角色替换: {old_role_id} -> {new_role_id} (第{replacement_count}代)",
+            )
+            self._events.append(event)
+
+            self._save()
+            return new_score
+
+    # ==================== 恢复机制（新增） ====================
+
+    def apply_recovery_bonus(self, role_id: str, task_id: str | None = None) -> int:
+        """
+        应用恢复积分奖励
+
+        检查连续无问题任务和一周无扣分条件
+
+        Args:
+            role_id: 角色ID
+            task_id: 任务ID
+
+        Returns:
+            恢复积分总和
+        """
+        with self._lock:
+            role_score = self._scores.get(role_id)
+            if not role_score or role_score.is_terminated:
+                return 0
+
+            total_recovery = 0
+            reasons = []
+
+            # 检查连续无问题任务
+            clean_count = role_score.consecutive_clean_tasks
+            if clean_count >= 5:
+                # 连续5次：同时获得3次奖励和额外奖励
+                recovery = ScoreRules.CONSECUTIVE_CLEAN_3 + ScoreRules.CONSECUTIVE_CLEAN_5
+                total_recovery += recovery
+                reasons.append(f"连续{clean_count}次无问题任务 +{recovery}（含3次基础+5次额外）")
+            elif clean_count >= 3:
+                recovery = ScoreRules.CONSECUTIVE_CLEAN_3
+                total_recovery += recovery
+                reasons.append(f"连续{clean_count}次无问题任务 +{recovery}")
+
+            # 检查一周无扣分
+            if role_score.last_deduction_time:
+                week_seconds = 7 * 24 * 3600
+                if time.time() - role_score.last_deduction_time >= week_seconds:
+                    recovery = ScoreRules.WEEK_NO_DEDUCTION
+                    total_recovery += recovery
+                    reasons.append("一周无扣分记录 +{recovery}")
+
+            # 应用恢复积分
+            if total_recovery > 0:
+                # 不超过100分上限
+                max_recovery = min(total_recovery, 100 - role_score.score)
+                if max_recovery > 0:
+                    self._apply_delta(
+                        role_id=role_id,
+                        delta=max_recovery,
+                        event_type="recovery_bonus",
+                        reason="; ".join(reasons),
+                        task_id=task_id,
+                    )
+
+            return total_recovery
+
+    def increment_clean_task(self, role_id: str) -> int:
+        """
+        增加连续无问题任务计数
+
+        Args:
+            role_id: 角色ID
+
+        Returns:
+            当前连续无问题任务数
+        """
+        with self._lock:
+            role_score = self._scores.get(role_id)
+            if not role_score:
+                return 0
+
+            role_score.consecutive_clean_tasks += 1
+            role_score.updated_at = time.time()
+            self._save()
+
+            return role_score.consecutive_clean_tasks
+
+    def reset_clean_task(self, role_id: str) -> None:
+        """
+        重置连续无问题任务计数（发生扣分时调用）
+
+        Args:
+            role_id: 角色ID
+        """
+        with self._lock:
+            role_score = self._scores.get(role_id)
+            if not role_score:
+                return
+
+            role_score.consecutive_clean_tasks = 0
+            role_score.last_deduction_time = time.time()
+            role_score.updated_at = time.time()
+            self._save()
+
+    # ==================== 重复错误追踪（新增） ====================
+
+    def record_error_type(self, role_id: str, error_type: str) -> dict[str, Any]:
+        """
+        记录错误类型用于重复错误追踪
+
+        Args:
+            role_id: 角色ID
+            error_type: 错误类型（如 "naming", "logic", "test"）
+
+        Returns:
+            错误类型计数信息
+        """
+        with self._lock:
+            role_score = self._scores.get(role_id)
+            if not role_score:
+                return {"count": 0, "is_repeat": False}
+
+            # 增加该类型错误计数
+            current_count = role_score.error_type_history.get(error_type, 0) + 1
+            role_score.error_type_history[error_type] = current_count
+            role_score.updated_at = time.time()
+
+            # 判断是否为重复错误
+            is_repeat = current_count > 1
+            repeat_multiplier = ScoreRules.REPEAT_ERROR_MULTIPLIER if is_repeat else 1.0
+
+            self._save()
+
+            return {
+                "count": current_count,
+                "is_repeat": is_repeat,
+                "multiplier": repeat_multiplier,
+                "error_type": error_type,
+            }
+
+    def get_error_repeat_count(self, role_id: str, error_type: str) -> int:
+        """
+        获取特定错误类型的重复次数
+
+        Args:
+            role_id: 角色ID
+            error_type: 错误类型
+
+        Returns:
+            错误重复次数
+        """
+        with self._lock:
+            role_score = self._scores.get(role_id)
+            if not role_score:
+                return 0
+
+            return role_score.error_type_history.get(error_type, 0)
+
+    # ==================== PM问责机制（新增） ====================
+
+    def check_pm_accountability(self, pm_role_id: str, month_timestamp: float | None = None) -> dict[str, Any]:
+        """
+        检查PM问责条件
+
+        Args:
+            pm_role_id: PM角色ID
+            month_timestamp: 月度时间戳（默认为当前时间）
+
+        Returns:
+            问责检查结果
+        """
+        with self._lock:
+            month_timestamp = month_timestamp or time.time()
+            month_seconds = 30 * 24 * 3600
+
+            # 统计本月角色替换次数
+            replacement_events = [
+                e for e in self._events
+                if e.event_type == "role_replacement"
+                and e.timestamp >= month_timestamp - month_seconds
+            ]
+
+            # 按角色类型统计
+            type_replacements: dict[str, int] = {}
+            for event in replacement_events:
+                role_type = event.role_type
+                type_replacements[role_type] = type_replacements.get(role_type, 0) + 1
+
+            total_replacements = len(replacement_events)
+
+            # 检查问责条件
+            penalties = []
+            total_penalty = 0
+
+            # 单角色换人 > 2次/月
+            for role_type, count in type_replacements.items():
+                if count > 2:
+                    penalty = ScoreRules.PM_SINGLE_REPLACEMENT_PENALTY
+                    penalties.append(f"{role_type} 换人{count}次 PM -{penalty}")
+                    total_penalty += penalty
+
+            # 团队换人 > 5次/月
+            if total_replacements > 5:
+                penalty = ScoreRules.PM_TEAM_REPLACEMENT_PENALTY
+                penalties.append(f"团队总换人{total_replacements}次 PM -{penalty}")
+                total_penalty += penalty
+
+            # 应用PM扣分
+            pm_score = self._scores.get(pm_role_id)
+            pm_should_terminate = False
+            if pm_score and total_penalty > 0:
+                self._apply_delta(
+                    role_id=pm_role_id,
+                    delta=total_penalty,
+                    event_type="pm_accountability",
+                    reason="; ".join(penalties),
+                )
+
+                # 检查PM是否也应该被开除
+                if pm_score.score < ScoreRules.PM_TERMINATION_THRESHOLD:
+                    pm_should_terminate = True
+
+            return {
+                "total_replacements": total_replacements,
+                "type_replacements": type_replacements,
+                "total_penalty": total_penalty,
+                "penalties": penalties,
+                "pm_should_terminate": pm_should_terminate,
+            }
+
+    def get_team_replacement_stats(self, days: int = 30) -> dict[str, Any]:
+        """
+        获取团队角色替换统计
+
+        Args:
+            days: 统计天数
+
+        Returns:
+            统计结果
+        """
+        with self._lock:
+            cutoff_time = time.time() - days * 24 * 3600
+
+            replacement_events = [
+                e for e in self._events
+                if e.event_type == "role_replacement"
+                and e.timestamp >= cutoff_time
+            ]
+
+            # 按角色类型分组
+            by_type: dict[str, list[str]] = {}
+            for event in replacement_events:
+                role_type = event.role_type
+                if role_type not in by_type:
+                    by_type[role_type] = []
+                by_type[role_type].append(event.role_id)
+
+            return {
+                "total_replacements": len(replacement_events),
+                "by_type": {k: len(v) for k, v in by_type.items()},
+                "details": by_type,
+                "period_days": days,
+            }
+
+    # ==================== 增强的积分变更方法 ====================
+
+    def on_task_success_enhanced(
+        self,
+        generator_id: str,
+        rounds: int,
+        task_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        增强版任务成功事件（包含恢复机制）
+
+        Args:
+            generator_id: 生成器角色ID
+            rounds: 对抗轮次
+            task_id: 任务ID
+
+        Returns:
+            详细结果字典
+        """
+        with self._lock:
+            # 应用基础奖励
+            if rounds == 1:
+                base_delta = ScoreRules.ONE_ROUND_PASS
+            elif rounds == 2:
+                base_delta = ScoreRules.TWO_ROUND_PASS
+            elif rounds == 3:
+                base_delta = ScoreRules.THREE_ROUND_PASS
+            else:
+                base_delta = ScoreRules.FOUR_PLUS_ROUND
+
+            self._apply_delta(generator_id, base_delta, "task_success", f"任务通过（{rounds}轮）", task_id)
+
+            # 增加连续无问题任务计数
+            clean_count = self.increment_clean_task(generator_id)
+
+            # 应用恢复积分（如果满足条件）
+            recovery_delta = self.apply_recovery_bonus(generator_id, task_id)
+
+            # 更新统计
+            if generator_id in self._scores:
+                self._scores[generator_id].total_tasks += 1
+                self._scores[generator_id].success_tasks += 1
+
+            return {
+                "base_delta": base_delta,
+                "recovery_delta": recovery_delta,
+                "clean_count": clean_count,
+                "total_delta": base_delta + recovery_delta,
+            }
+
+    def on_issue_found_enhanced(
+        self,
+        generator_id: str,
+        discriminator_id: str,
+        severity: str,
+        error_type: str,
+        task_id: str | None = None,
+        description: str = "",
+    ) -> dict[str, Any]:
+        """
+        增强版发现问题事件（包含重复错误翻倍）
+
+        Args:
+            generator_id: 生成器角色ID
+            discriminator_id: 判别器角色ID
+            severity: 严重程度
+            error_type: 错误类型（用于重复追踪）
+            task_id: 任务ID
+            description: 问题描述
+
+        Returns:
+            详细结果字典
+        """
+        severity = severity.lower()
+
+        # 记录错误类型（检查是否重复）
+        error_info = self.record_error_type(generator_id, error_type)
+
+        # 确定基础扣分/加分
+        if severity == "security":
+            gen_base = ScoreRules.SECURITY_VULNERABILITY
+            disc_base = ScoreRules.FIND_SECURITY
+        elif severity == "major":
+            gen_base = ScoreRules.ISSUE_MAJOR
+            disc_base = ScoreRules.FIND_MAJOR
+        elif severity == "medium":
+            gen_base = ScoreRules.ISSUE_MEDIUM
+            disc_base = ScoreRules.FIND_MEDIUM
+        else:
+            gen_base = ScoreRules.ISSUE_MINOR
+            disc_base = ScoreRules.FIND_MINOR
+
+        # 应用重复错误翻倍（仅对生成器）
+        multiplier = error_info.get("multiplier", 1.0)
+        gen_delta = int(gen_base * multiplier)
+        disc_delta = disc_base
+
+        # 重置生成器的连续无问题计数
+        self.reset_clean_task(generator_id)
+
+        # 应用变更
+        self._apply_delta(
+            generator_id, gen_delta, "issue_found",
+            f"发现问题: {description} (重复{error_info['count']}次)", task_id, severity
+        )
+        self._apply_delta(
+            discriminator_id, disc_delta, "issue_found",
+            f"发现问题: {description}", task_id, severity
+        )
+
+        # 更新统计
+        if generator_id in self._scores:
+            self._scores[generator_id].issues_found += 1
+        if discriminator_id in self._scores:
+            self._scores[discriminator_id].issues_found += 1
+            self._scores[discriminator_id].issues_valid += 1
+
+        # 检查淘汰
+        termination_check = self.check_termination(generator_id)
+
+        return {
+            "gen_delta": gen_delta,
+            "disc_delta": disc_delta,
+            "error_info": error_info,
+            "termination_check": termination_check,
+        }

@@ -5,6 +5,82 @@ All notable changes to HarnessGenJ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-04-11
+
+### Added - Hooks 强制阻止机制优化
+
+**三层防御机制**：
+- 层1: Hooks PreToolUse 返回非零值阻止未授权操作
+- 层2: state.json 添加 `framework_initialized` 字段持久化
+- 层3: 创建 `framework_state.md` 会话恢复文件
+
+**进程间状态共享**：
+- `_check_framework_permission()` 直接读取 state.json/session_state.json
+- `is_initialized()` 从持久化文件读取跨进程状态
+- 许可文件列表通过 session_state.json 跨进程共享
+
+**测试验证**：
+- 新增 `tests/test_hooks_enforcement.py`（8个测试用例）
+- 验证未初始化阻止、无许可阻止、授权允许等场景
+- 验证进程间状态共享和许可列表持久化
+
+### Fixed
+
+- 修复 Hooks PreToolUse 返回值不阻止工具执行的问题（`return 1` 强制阻止）
+- 修复 `is_initialized()` 无法跨进程检测框架状态的问题
+
+## [1.4.0] - 2026-04-10
+
+### Added - 方案D：GAN式对抗积分系统优化
+
+**分层扣分梯度**：
+- 小问题（命名、注释、格式）：-4分
+- 中问题（逻辑错误、测试不足）：-8分
+- 大问题（设计缺陷、接口错误）：-15分
+- 安全漏洞：-25分
+- 生产Bug：-40分（触发淘汰检查）
+
+**赋分比例调整**：
+- 生成器奖励：一轮通过 +15分，二轮 +10分，三轮 +5分
+- 判别器奖励：发现小问题 +5分，中问题 +10分，大问题 +18分，安全漏洞 +30分，阻止生产Bug +45分
+- 误报惩罚提升至 -10分
+
+**角色淘汰机制**：
+- `check_termination()`: 检查淘汰条件（积分 < 30终止，< 50警告）
+- `terminate_role()`: 标记角色终止，生成新角色命名建议
+- `create_replacement_role()`: 创建替换角色（继承历史计数）
+- `RoleScore` 新增字段：`is_terminated`, `termination_reason`, `replacement_count`
+
+**恢复机制**：
+- 连续3次无问题任务：+5分恢复
+- 连续5次无问题任务：+13分恢复（含基础+额外）
+- 一周无扣分记录：+10分
+- 同类错误重复扣分翻倍（1.5倍系数）
+- `RoleScore` 新增字段：`consecutive_clean_tasks`, `last_deduction_time`, `error_type_history`
+
+**PM问责机制**：
+- 单角色换人 > 2次/月：PM -10分
+- 团队换人 > 5次/月：PM -30分
+- PM积分 < 30：PM也被开除
+- `check_pm_accountability()`: 检查PM问责条件
+- `get_team_replacement_stats()`: 获取团队替换统计
+
+**角色人格目标强化**：
+- Developer: 追求一轮通过审查，避免重复错误
+- CodeReviewer: 发现真实问题，避免误报
+- BugHunter: 发现高危漏洞，阻止生产灾难
+- ProjectManager: 协调团队稳定，避免问责
+
+### Changed
+- `ScoreRules` 常量重命名：`BUG_FOUND_*` → `ISSUE_*`，新增 `ISSUE_MEDIUM`, `SECURITY_VULNERABILITY`
+- `ScoreRules` 常量重命名：`FIND_CRITICAL` → `FIND_MAJOR`，新增 `FIND_MEDIUM`, `FIND_SECURITY`
+- `on_issue_found()` 方法使用新的分层扣分规则
+- `quality/__init__.py` 导出 `ScoreRules`
+
+### New Tests
+- `tests/quality/test_score_system.py`: 25个测试用例覆盖新增功能
+- 测试总数：1055个全部通过
+
 ## [1.3.2] - 2026-04-10
 
 ### Added

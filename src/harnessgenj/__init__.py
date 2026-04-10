@@ -13,7 +13,7 @@ A Harness Engineering Framework for AI Agent Collaboration
 - 一键执行: 快速完成功能开发/Bug修复
 """
 
-__version__ = "1.3.2"
+__version__ = "1.4.1"
 
 # 主入口
 from harnessgenj.engine import Harness, create_harness
@@ -127,6 +127,7 @@ from harnessgenj.harness import (
 # Quality Module - 质量保证系统
 from harnessgenj.quality import (
     ScoreManager,
+    ScoreRules,
     RoleScore,
     ScoreEvent,
     AdversarialRecord,
@@ -263,6 +264,7 @@ __all__ = [
     "create_adversarial_workflow",
     # Quality
     "ScoreManager",
+    "ScoreRules",
     "RoleScore",
     "ScoreEvent",
     "AdversarialRecord",

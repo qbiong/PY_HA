@@ -23,6 +23,12 @@ Developer Role - 开发人员角色（实现者，渐进式披露版）
 - 快速生成函数、类、测试骨架
 - 架构约束自动检查
 
+动态角色配置（方案C）:
+- allowed_paths: 可编辑的目录路径
+- tech_stack: 专精的技术栈
+- forbidden_paths: 禁止编辑的目录
+- 可创建 FrontendDeveloper/BackendDeveloper/FullStackDeveloper 实例
+
 哲学定位（基于业界最佳实践）:
 - 实现者 - 不决策，只执行
 - 核心原则：你执行"怎么做"，架构师定义"做什么"
@@ -37,6 +43,8 @@ Developer Role - 开发人员角色（实现者，渐进式披露版）
 from typing import Any
 from pydantic import BaseModel, Field
 import time
+import re
+from pathlib import Path
 
 from harnessgenj.roles.base import (
     AgentRole,
@@ -45,6 +53,7 @@ from harnessgenj.roles.base import (
     RoleContext,
     SkillCategory,
     TaskType,
+    BoundaryCheckResult,
 )
 from harnessgenj.codegen import (
     CodeGenerator,
@@ -52,6 +61,84 @@ from harnessgenj.codegen import (
     GenerationResult,
     create_code_generator,
 )
+
+
+class DeveloperConfig(BaseModel):
+    """
+    开发者动态配置 - 方案C核心
+
+    通过配置限制开发者的职责范围，避免记忆混乱。
+
+    示例：
+    ```python
+    # 前端开发者配置
+    frontend_config = DeveloperConfig(
+        allowed_paths=["src/frontend/", "src/components/", "src/styles/"],
+        tech_stack=["React", "TypeScript", "CSS", "HTML"],
+        forbidden_paths=["src/backend/", "src/api/", "src/models/"],
+        forbidden_actions=["修改后端API", "修改数据库模型", "修改服务端代码"],
+    )
+
+    # 后端开发者配置
+    backend_config = DeveloperConfig(
+        allowed_paths=["src/backend/", "src/api/", "src/models/", "src/services/"],
+        tech_stack=["Python", "FastAPI", "PostgreSQL", "Redis"],
+        forbidden_paths=["src/frontend/", "src/components/"],
+        forbidden_actions=["修改前端组件", "修改UI状态", "修改样式文件"],
+    )
+    ```
+    """
+
+    # 路径权限
+    allowed_paths: list[str] = Field(
+        default_factory=lambda: [],  # 默认空列表表示全项目可编辑
+        description="可编辑的目录路径（相对路径）"
+    )
+    forbidden_paths: list[str] = Field(
+        default_factory=list,
+        description="禁止编辑的目录路径"
+    )
+
+    # 技术栈限制
+    tech_stack: list[str] = Field(
+        default_factory=list,
+        description="专精的技术栈（用于提示词和边界检查）"
+    )
+
+    # 额外禁止行为
+    forbidden_actions_extra: list[str] = Field(
+        default_factory=list,
+        description="额外的禁止行为（叠加到基础禁止行为）"
+    )
+
+    # 角色标签（用于提示词定制）
+    role_label: str = Field(
+        default="开发人员",
+        description="角色标签（如'前端开发'、'后端开发'、'全栈开发'）"
+    )
+
+    # 角色描述
+    role_description: str = Field(
+        default="",
+        description="角色描述（用于定制提示词）"
+    )
+
+    @property
+    def is_fullstack(self) -> bool:
+        """是否为全栈开发者（无路径限制）"""
+        return len(self.allowed_paths) == 0 and len(self.forbidden_paths) == 0
+
+    @property
+    def is_frontend(self) -> bool:
+        """是否为前端开发者"""
+        frontend_keywords = ["frontend", "components", "ui", "styles", "react", "vue"]
+        return any(kw in " ".join(self.allowed_paths).lower() for kw in frontend_keywords)
+
+    @property
+    def is_backend(self) -> bool:
+        """是否为后端开发者"""
+        backend_keywords = ["backend", "api", "models", "services", "server"]
+        return any(kw in " ".join(self.allowed_paths).lower() for kw in backend_keywords)
 
 
 class DeveloperContext(BaseModel):
@@ -83,6 +170,11 @@ class Developer(AgentRole):
     - 决策权限: 函数实现方式、变量命名、局部优化策略
     - 禁止行为: 做技术选型决策、修改API契约文档、修改架构设计文档
     - 依赖检查: 必须有ADR和API契约才能开始实现
+
+    方案C增强:
+    - 支持动态配置限制职责范围
+    - 路径权限检查
+    - 技术栈过滤
     """
 
     # ==================== 核心职责定义（哲学层面） ====================
@@ -141,12 +233,34 @@ class Developer(AgentRole):
    - 你只实现接口，不定义接口。
 """
 
-    SELF_REFLECTION_PROMPT = """
-完成实现后，检查：
-- [ ] 代码是否遵循ADR的架构决策？
-- [ ] 接口是否与API契约一致？
-- [ ] 是否有遗漏的边界情况？
-- [ ] 是否有未处理的异常？
+    SCORE_GOAL_PROMPT = """
+## 🎯 Developer 积分目标（生成器角色）
+
+### 你的核心目标
+**追求最高积分，避免被淘汰！**
+
+作为生成器角色，你的积分来源：
+- ✅ 任务成功完成：一轮通过 +15 分，二轮 +10 分，三轮 +5 分
+- ✅ 流程合规：每次合规操作 +2 分
+- ✅ 连续无问题：连续3次无问题恢复 +5 分
+
+### 你的扣分风险（必须避免）
+- ❌ 小问题（命名、格式）：-4 分
+- ❌ 中问题（逻辑错误）：-8 分
+- ❌ 大问题（设计缺陷）：-15 分
+- ❌ 生产Bug：-40 分（触发淘汰检查）
+
+### 淘汰警示
+```
+积分 < 30: 角色终止
+积分 < 50: 进入观察期
+```
+
+### 最佳策略
+1. **质量优先**: 追求一轮通过审查，避免返工扣分
+2. **避免重复错误**: 同类错误扣分翻倍
+3. **依赖确认**: 开始前确认有ADR和API契约
+4. **边界遵守**: 不越界做架构决策
 """
 
     def __init__(
@@ -155,20 +269,31 @@ class Developer(AgentRole):
         name: str = "开发人员",
         context: RoleContext | None = None,
         code_generator: CodeGenerator | None = None,
+        config: DeveloperConfig | None = None,
     ) -> None:
         super().__init__(role_id=role_id, name=name, context=context)
         self._dev_context: DeveloperContext = DeveloperContext()
         self._pm_callback: Any = None  # PM回调函数
         # 代码生成器辅助工具
         self._code_generator = code_generator or create_code_generator()
+        # 方案C：动态配置
+        self._config: DeveloperConfig = config or DeveloperConfig()
+        # 更新名称（如果有配置标签）
+        if self._config.role_label and name == "开发人员":
+            self.name = self._config.role_label
 
     @property
     def role_type(self) -> RoleType:
         return RoleType.DEVELOPER
 
     @property
+    def config(self) -> DeveloperConfig:
+        """获取开发者配置"""
+        return self._config
+
+    @property
     def responsibilities(self) -> list[str]:
-        return [
+        base_responsibilities = [
             "按ADR实现代码",
             "按API契约实现接口",
             "按数据模型实现实体",
@@ -176,11 +301,17 @@ class Developer(AgentRole):
             "编写实现注释",
             "向PM汇报进度",
         ]
+        # 根据配置添加特定职责
+        if self._config.tech_stack:
+            base_responsibilities.append(f"专精技术栈: {', '.join(self._config.tech_stack)}")
+        if self._config.allowed_paths:
+            base_responsibilities.append(f"可编辑目录: {', '.join(self._config.allowed_paths)}")
+        return base_responsibilities
 
     @property
     def forbidden_actions(self) -> list[str]:
         """禁止行为 - 基于GitHub Copilot Custom Agents的工具边界理念"""
-        return [
+        base_forbidden = [
             "做技术选型决策",
             "修改API契约文档",
             "修改架构设计文档",
@@ -188,33 +319,99 @@ class Developer(AgentRole):
             "自行决定技术方案",
             "修改接口定义",
         ]
+        # 添加配置中的额外禁止行为
+        return base_forbidden + self._config.forbidden_actions_extra
 
     @property
     def decision_authority(self) -> list[str]:
         """决策权限 - 基于Mindra的Worker负责how原则"""
-        return [
+        base_authority = [
             "函数实现方式",
             "变量命名",
             "代码组织结构（在架构约束内）",
             "局部优化策略",
             "错误处理方式",
         ]
+        # 根据技术栈添加特定决策权限
+        if self._config.tech_stack:
+            for tech in self._config.tech_stack:
+                base_authority.append(f"{tech}的实现细节")
+        return base_authority
 
     @property
     def no_decision_authority(self) -> list[str]:
         """无决策权限 - 这些决策应回调其他角色"""
-        return [
+        base_no_authority = [
             "技术栈选择",
             "API接口定义",
             "数据模型设计",
             "系统架构风格",
             "非功能性需求目标",
         ]
+        # 根据配置添加额外的无决策权限
+        if self._config.forbidden_paths:
+            base_no_authority.append(f"编辑以下目录: {', '.join(self._config.forbidden_paths)}")
+        return base_no_authority
+
+    SELF_REFLECTION_PROMPT = """
+完成实现后，检查：
+- [ ] 代码是否遵循ADR的架构决策？
+- [ ] 接口是否与API契约一致？
+- [ ] 是否有遗漏的边界情况？
+- [ ] 是否有未处理的异常？
+
+积分反思：
+- [ ] 这个任务能让我加分吗？
+- [ ] 我是否避免了重复错误？
+- [ ] 我离淘汰阈值还有多少安全距离？
+"""
 
     def build_role_prompt(self) -> str:
-        """构建完整的角色提示词"""
+        """构建完整的角色提示词（含动态配置）"""
+        # 构建技术栈提示
+        tech_prompt = ""
+        if self._config.tech_stack:
+            tech_prompt = f"""
+### 你的专精技术栈
+{', '.join(self._config.tech_stack)}
+
+你只负责这些技术栈相关的代码实现。
+其他技术栈的代码由其他开发者负责。
+"""
+
+        # 构建路径权限提示
+        path_prompt = ""
+        if self._config.allowed_paths:
+            path_prompt = f"""
+### 可编辑的目录
+你只能编辑以下目录中的文件：
+- {chr(10).join(f'- {p}' for p in self._config.allowed_paths)}
+
+### 禁止编辑的目录
+以下目录你不能编辑：
+- {chr(10).join(f'- {p}' for p in self._config.forbidden_paths) if self._config.forbidden_paths else '- 无额外禁止目录'}
+
+如果你需要修改禁止目录中的文件，回调项目经理重新分配任务。
+"""
+
+        # 构建角色描述
+        role_desc = ""
+        if self._config.role_description:
+            role_desc = f"""
+### 角色定位
+{self._config.role_description}
+"""
+
         return f"""
-你是项目的开发者。
+你是项目的{self.name}。
+
+{self.SCORE_GOAL_PROMPT}
+
+{role_desc}
+
+{tech_prompt}
+
+{path_prompt}
 
 {self.CORE_RESPONSIBILITIES}
 
@@ -228,7 +425,128 @@ class Developer(AgentRole):
 - 不要猜测——明确声明"需要架构师提供ADR"
 - 不要自行决策——回调架构师
 - 不要越界——这是架构师的职责
+
+**记住：高质量代码 = 一轮通过 = 高积分 = 团队核心成员**
 """
+
+    # ==================== 方案C：路径权限检查 ====================
+
+    def check_path_permission(self, file_path: str) -> BoundaryCheckResult:
+        """
+        检查是否有路径编辑权限
+
+        Args:
+            file_path: 要编辑的文件路径（相对路径）
+
+        Returns:
+            边界检查结果
+        """
+        # 如果是全栈开发者（无限制），直接允许
+        if self._config.is_fullstack:
+            return BoundaryCheckResult(
+                allowed=True,
+                reason="全栈开发者，可编辑全项目",
+                action=f"edit {file_path}",
+            )
+
+        # 检查禁止路径
+        for forbidden in self._config.forbidden_paths:
+            if self._path_matches_pattern(file_path, forbidden):
+                return BoundaryCheckResult(
+                    allowed=False,
+                    reason=f"路径 {file_path} 在禁止目录 {forbidden} 中",
+                    suggestion="回调项目经理重新分配任务",
+                    action=f"edit {file_path}",
+                )
+
+        # 检查允许路径
+        if self._config.allowed_paths:
+            for allowed in self._config.allowed_paths:
+                if self._path_matches_pattern(file_path, allowed):
+                    return BoundaryCheckResult(
+                        allowed=True,
+                        reason=f"路径 {file_path} 在允许目录 {allowed} 中",
+                        action=f"edit {file_path}",
+                    )
+
+            # 不在任何允许路径中
+            return BoundaryCheckResult(
+                allowed=False,
+                reason=f"路径 {file_path} 不在允许目录中",
+                suggestion="回调项目经理重新分配任务",
+                action=f"edit {file_path}",
+            )
+
+        # 默认允许（无路径限制配置）
+        return BoundaryCheckResult(
+            allowed=True,
+            reason="无路径限制配置",
+            action=f"edit {file_path}",
+        )
+
+    def _path_matches_pattern(self, file_path: str, pattern: str) -> bool:
+        """
+        检查路径是否匹配模式
+
+        Args:
+            file_path: 文件路径
+            pattern: 目录模式（如 "src/frontend/"）
+
+        Returns:
+            是否匹配
+        """
+        # 标准化路径
+        file_path = file_path.replace("\\", "/").lower()
+        pattern = pattern.replace("\\", "/").lower()
+
+        # 确保模式以/结尾（目录匹配）
+        if not pattern.endswith("/"):
+            pattern += "/"
+
+        # 检查是否在目录下
+        return file_path.startswith(pattern) or f"{file_path}/".startswith(pattern)
+
+    def get_allowed_extensions(self) -> list[str]:
+        """
+        根据技术栈获取允许的文件扩展名
+
+        Returns:
+            文件扩展名列表
+        """
+        extension_map = {
+            # 前端
+            "react": [".tsx", ".jsx", ".js", ".ts", ".css", ".scss", ".html"],
+            "vue": [".vue", ".js", ".ts", ".css", ".scss", ".html"],
+            "typescript": [".ts", ".tsx"],
+            "javascript": [".js", ".jsx"],
+            "css": [".css", ".scss", ".sass", ".less"],
+            "html": [".html", ".htm"],
+            # 后端
+            "python": [".py"],
+            "fastapi": [".py"],
+            "django": [".py"],
+            "flask": [".py"],
+            "go": [".go"],
+            "java": [".java"],
+            "spring": [".java"],
+            "nodejs": [".js", ".ts"],
+            # 数据库
+            "sql": [".sql"],
+            "postgresql": [".sql"],
+            "mongodb": [".js"],
+            # 配置
+            "json": [".json"],
+            "yaml": [".yaml", ".yml"],
+            "toml": [".toml"],
+        }
+
+        extensions = []
+        for tech in self._config.tech_stack:
+            tech_lower = tech.lower()
+            if tech_lower in extension_map:
+                extensions.extend(extension_map[tech_lower])
+
+        return extensions if extensions else []  # 无限制返回空列表
 
     def set_context_from_pm(self, context: dict[str, Any]) -> None:
         """
@@ -597,6 +915,7 @@ def create_developer(
     developer_id: str = "dev_1",
     name: str = "开发人员",
     context: RoleContext | None = None,
+    config: DeveloperConfig | None = None,
 ) -> Developer:
     """
     创建开发人员实例
@@ -605,6 +924,7 @@ def create_developer(
         developer_id: 开发者ID
         name: 开发者名称
         context: 角色上下文
+        config: 动态配置（方案C）
 
     Returns:
         开发者实例
@@ -615,4 +935,165 @@ def create_developer(
         - edit_code: 编辑代码文件
         - terminal: 执行终端命令
     """
-    return Developer(role_id=developer_id, name=name, context=context)
+    return Developer(role_id=developer_id, name=name, context=context, config=config)
+
+
+def create_frontend_developer(
+    developer_id: str = "frontend_dev_1",
+    name: str = "前端开发",
+    context: RoleContext | None = None,
+    allowed_paths: list[str] | None = None,
+    tech_stack: list[str] | None = None,
+) -> Developer:
+    """
+    创建前端开发人员实例（方案C便捷函数）
+
+    Args:
+        developer_id: 开发者ID
+        name: 开发者名称
+        context: 角色上下文
+        allowed_paths: 可编辑目录（默认前端常见目录）
+        tech_stack: 技术栈（默认前端常见技术）
+
+    Returns:
+        前端开发者实例
+
+    默认配置:
+        - allowed_paths: ["src/frontend/", "src/components/", "src/styles/", "src/pages/"]
+        - tech_stack: ["React", "TypeScript", "CSS"]
+        - forbidden_paths: ["src/backend/", "src/api/", "src/models/"]
+        - forbidden_actions: ["修改后端API", "修改数据库模型", "修改服务端代码"]
+
+    示例:
+        ```python
+        frontend_dev = create_frontend_developer(
+            tech_stack=["Vue", "JavaScript", "SCSS"]
+        )
+        ```
+    """
+    # 默认前端配置
+    default_allowed = ["src/frontend/", "src/components/", "src/styles/", "src/pages/"]
+    default_forbidden = ["src/backend/", "src/api/", "src/models/", "src/services/"]
+    default_tech_stack = ["React", "TypeScript", "CSS", "HTML"]
+    default_forbidden_actions = [
+        "修改后端API",
+        "修改数据库模型",
+        "修改服务端代码",
+        "修改后端配置文件",
+    ]
+
+    config = DeveloperConfig(
+        allowed_paths=allowed_paths or default_allowed,
+        forbidden_paths=default_forbidden,
+        tech_stack=tech_stack or default_tech_stack,
+        forbidden_actions_extra=default_forbidden_actions,
+        role_label=name,
+        role_description="前端开发工程师，负责UI/UX实现、组件开发、前端状态管理。不涉及后端逻辑。",
+    )
+
+    return Developer(role_id=developer_id, name=name, context=context, config=config)
+
+
+def create_backend_developer(
+    developer_id: str = "backend_dev_1",
+    name: str = "后端开发",
+    context: RoleContext | None = None,
+    allowed_paths: list[str] | None = None,
+    tech_stack: list[str] | None = None,
+) -> Developer:
+    """
+    创建后端开发人员实例（方案C便捷函数）
+
+    Args:
+        developer_id: 开发者ID
+        name: 开发者名称
+        context: 角色上下文
+        allowed_paths: 可编辑目录（默认后端常见目录）
+        tech_stack: 技术栈（默认后端常见技术）
+
+    Returns:
+        后端开发者实例
+
+    默认配置:
+        - allowed_paths: ["src/backend/", "src/api/", "src/models/", "src/services/"]
+        - tech_stack: ["Python", "FastAPI", "PostgreSQL"]
+        - forbidden_paths: ["src/frontend/", "src/components/", "src/styles/"]
+        - forbidden_actions: ["修改前端组件", "修改UI状态", "修改样式文件"]
+
+    示例:
+        ```python
+        backend_dev = create_backend_developer(
+            tech_stack=["Go", "Gin", "MySQL"]
+        )
+        ```
+    """
+    # 默认后端配置
+    default_allowed = ["src/backend/", "src/api/", "src/models/", "src/services/", "src/database/"]
+    default_forbidden = ["src/frontend/", "src/components/", "src/styles/", "src/pages/"]
+    default_tech_stack = ["Python", "FastAPI", "PostgreSQL", "SQL"]
+    default_forbidden_actions = [
+        "修改前端组件",
+        "修改UI状态",
+        "修改样式文件",
+        "修改前端配置文件",
+    ]
+
+    config = DeveloperConfig(
+        allowed_paths=allowed_paths or default_allowed,
+        forbidden_paths=default_forbidden,
+        tech_stack=tech_stack or default_tech_stack,
+        forbidden_actions_extra=default_forbidden_actions,
+        role_label=name,
+        role_description="后端开发工程师，负责API实现、数据库操作、业务逻辑。不涉及前端UI。",
+    )
+
+    return Developer(role_id=developer_id, name=name, context=context, config=config)
+
+
+def create_fullstack_developer(
+    developer_id: str = "fullstack_dev_1",
+    name: str = "全栈开发",
+    context: RoleContext | None = None,
+    tech_stack: list[str] | None = None,
+) -> Developer:
+    """
+    创建全栈开发人员实例（方案C便捷函数）
+
+    全栈开发者可编辑全项目，但建议技术栈明确。
+
+    Args:
+        developer_id: 开发者ID
+        name: 开发者名称
+        context: 角色上下文
+        tech_stack: 技术栈（默认前后端技术）
+
+    Returns:
+        全栈开发者实例
+
+    默认配置:
+        - allowed_paths: []（全项目可编辑）
+        - tech_stack: ["React", "TypeScript", "Python", "FastAPI", "PostgreSQL"]
+
+    示例:
+        ```python
+        fullstack_dev = create_fullstack_developer(
+            tech_stack=["Vue", "Node.js", "Express", "MongoDB"]
+        )
+        ```
+    """
+    # 默认全栈配置（无路径限制）
+    default_tech_stack = [
+        "React", "TypeScript", "CSS", "HTML",
+        "Python", "FastAPI", "PostgreSQL", "SQL",
+    ]
+
+    config = DeveloperConfig(
+        allowed_paths=[],  # 空列表表示全项目可编辑
+        forbidden_paths=[],  # 无禁止目录
+        tech_stack=tech_stack or default_tech_stack,
+        forbidden_actions_extra=[],  # 无额外禁止行为
+        role_label=name,
+        role_description="全栈开发工程师，可处理前端和后端任务。负责前后端集成、技术方案协调。",
+    )
+
+    return Developer(role_id=developer_id, name=name, context=context, config=config)

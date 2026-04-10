@@ -42,6 +42,7 @@ import json
 import uuid
 import re
 import glob
+from datetime import datetime
 
 from harnessgenj.roles import (
     AgentRole,
@@ -205,6 +206,8 @@ class Harness:
 
         用于 Hooks 脚本检测框架状态，判断是否需要提醒用户。
 
+        ★ 增强版：先检查内存变量，再从持久化文件读取（支持跨进程检查）
+
         Returns:
             True 如果框架已初始化，False 否则
 
@@ -212,7 +215,22 @@ class Harness:
             if not Harness.is_initialized():
                 print("请先初始化框架: harness = Harness.from_project('.')")
         """
-        return cls._instance_initialized
+        # 优先检查内存变量（同一进程内快速）
+        if cls._instance_initialized:
+            return True
+
+        # ★ 新增：从持久化文件读取（跨进程检查）
+        if cls._current_project_path:
+            state_path = Path(cls._current_project_path) / "state.json"
+            if state_path.exists():
+                try:
+                    with open(state_path, "r", encoding="utf-8") as f:
+                        state = json.load(f)
+                    return state.get("framework_initialized", False)
+                except Exception:
+                    pass
+
+        return False
 
     @classmethod
     def get_initialization_status(cls) -> dict[str, Any]:
@@ -699,6 +717,9 @@ class Harness:
                 "project_name": self.project_name,
                 "stats": self._stats.model_dump(),
                 "updated_at": time.time(),
+                # ★ 新增：框架初始化标记（用于 Hooks 进程间共享）
+                "framework_initialized": True,
+                "initialized_at": datetime.now().isoformat(),
             }
 
             with open(state_path, "w", encoding="utf-8") as f:

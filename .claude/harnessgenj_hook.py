@@ -297,14 +297,14 @@ def handle_pre_tool_use_security() -> int:
 
     print(f"[HarnessGenJ] PreToolUse Security: tool={tool_name}, file={file_path}", file=sys.stderr)
 
-    # ==================== 新增：框架权限检查 ====================
+    # ==================== 框架权限检查（强制执行） ====================
     # 检查是否在框架控制下执行操作
     permission_result = _check_framework_permission(file_path, tool_name)
     if permission_result["blocked"]:
         print(permission_result["message"], file=sys.stderr)
-        # 返回非零值会阻止工具执行
-        # 但我们不强制阻止，只是警告（让用户决定是否继续）
-        # 如果需要强制阻止，可以返回 1
+        print("[HGJ] ⛔ 操作已阻止 - 请先通过框架获取许可", file=sys.stderr)
+        # ★ 强制阻止未授权操作
+        return 1  # 返回非零值阻止工具执行
 
     if not content:
         print("[HarnessGenJ] PreToolUse: 未获取到内容", file=sys.stderr)
@@ -353,50 +353,83 @@ def _check_framework_permission(file_path: str, tool_name: str) -> dict[str, Any
     if ".claude" in file_path or ".harnessgenj" in file_path:
         return result
 
-    # 检查框架是否已初始化
-    try:
-        from harnessgenj.engine import Harness
+    # ★ 从持久化文件读取状态，不依赖进程内存变量
+    project_root = get_project_root()
+    state_path = project_root / ".harnessgenj" / "state.json"
+    session_path = project_root / ".harnessgenj" / "session_state.json"
 
-        if not Harness.is_initialized():
-            result["blocked"] = True
-            result["message"] = """
-[HGJ 框架未初始化] ⚠️
+    # 检查框架是否已初始化（从文件读取）
+    if not state_path.exists():
+        result["blocked"] = True
+        result["message"] = """
+[HGJ 框架未初始化]
 
 检测到代码修改操作，但框架未初始化。
 
-建议先初始化框架:
+请先初始化框架:
+  from harnessgenj import Harness
   harness = Harness.from_project('.')
   harness.develop('功能描述')
 
-或在对话中直接说明需求，框架会自动引导你完成开发流程。
-
-当前积分系统: 使用框架可获得积分奖励
+使用框架可获得积分奖励。
 """
+        result["hint"] = "请初始化框架后再进行代码修改"
+        return result
+
+    try:
+        with open(state_path, "r", encoding="utf-8") as f:
+            state = json.load(f)
+
+        # 检查框架初始化标记
+        if not state.get("framework_initialized", False):
+            result["blocked"] = True
+            result["message"] = "[HGJ] 框架未初始化 - state.json 中无初始化标记"
             result["hint"] = "请初始化框架后再进行代码修改"
             return result
 
-        # 检查文件操作权限
-        from harnessgenj.harness.framework_session import FrameworkSession
-        session = FrameworkSession.get_instance()
-
-        if not session.check_permission(file_path):
+        # 检查文件操作权限列表
+        if not session_path.exists():
             result["blocked"] = True
-            result["message"] = session.get_permission_hint(file_path)
-            result["hint"] = f"未获得 {file_path} 的操作许可"
-
-            # 记录违规尝试
-            session._log_operation("unauthorized_tool_use", {
-                "tool": tool_name,
-                "file_path": file_path,
-            })
-
+            result["message"] = "[HGJ] 无操作许可 - session_state.json 不存在"
+            result["hint"] = "请先调用 develop() 或 fix_bug() 签发许可"
             return result
 
-    except ImportError:
-        # 框架未安装，跳过权限检查
-        print("[HarnessGenJ] 框架模块未安装，跳过权限检查", file=sys.stderr)
+        with open(session_path, "r", encoding="utf-8") as f:
+            session = json.load(f)
+
+        permitted_files = session.get("permitted_files", {})
+
+        # 路径匹配检查
+        normalized_path = os.path.normpath(file_path)
+        for permitted_path in permitted_files.keys():
+            normalized_permitted = os.path.normpath(permitted_path)
+            # 精确匹配或目录前缀匹配
+            if normalized_path == normalized_permitted or \
+               normalized_path.startswith(normalized_permitted + os.sep):
+                result["blocked"] = False
+                return result
+
+        result["blocked"] = True
+        result["message"] = f"[HGJ] 文件 {file_path} 未获得操作许可"
+        result["hint"] = "请先调用 harness.develop() 或 harness.fix_bug() 签发许可"
+
+        # 记录违规尝试到 session_state.json
+        session["operations_log"].append({
+            "timestamp": datetime.now().isoformat(),
+            "operation": "unauthorized_tool_use_blocked",
+            "details": {
+                "tool": tool_name,
+                "file_path": file_path,
+            }
+        })
+        with open(session_path, "w", encoding="utf-8") as f:
+            json.dump(session, f, ensure_ascii=False, indent=2)
+
     except Exception as e:
-        print(f"[HarnessGenJ] 权限检查异常: {e}", file=sys.stderr)
+        # 文件读取失败时不阻止（容错），但记录警告
+        result["blocked"] = False
+        result["message"] = f"[HGJ] 状态读取失败: {e}"
+        print(f"[HGJ Warning] 状态文件读取异常: {e}", file=sys.stderr)
 
     return result
 
