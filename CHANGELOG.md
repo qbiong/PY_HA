@@ -5,6 +5,41 @@ All notable changes to HarnessGenJ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-04-11
+
+### Added - Claude Code 架构优化（高价值项）
+
+**contextvars 上下文隔离**（参考 Claude Code AsyncLocalStorage）：
+- 新增 `src/harnessgenj/utils/agent_context.py`（~260行）
+- `AgentContext`: Agent 运行时上下文（agent_id, session_id, role_type, permission_mode）
+- `TeammateContext`: Teammate 持续运行上下文（team_name, mailbox_path, shutdown_requested）
+- `run_in_agent_context()`: 在隔离上下文中运行函数
+- `get_agent_context()`: 获取当前上下文（类似 AsyncLocalStorage.getStore()）
+- 气泡权限模式：`request_permission_from_parent()` 权限请求上浮到父
+
+**Shutdown 协议**（参考 Claude Code shutdown_request/shutdown_response）：
+- 新增 `src/harnessgenj/workflow/shutdown_protocol.py`（~350行）
+- `ShutdownRequest`: 关闭请求（agent_id, requester_id, reason, timeout_seconds）
+- `ShutdownResponse`: 关闭响应（approved, pending_tasks, reason）
+- `ShutdownProtocol`: 协议实现（创建/发送/处理/响应请求）
+- 未完成任务拒绝关闭：`has_pending_tasks()` → `approved=False`
+- 完成任务同意关闭：无未完成任务 → `approved=True`
+- 邮箱持久化：支持文件系统消息传递
+
+**测试验证**：
+- 新增 `tests/utils/test_agent_context.py`（12个测试用例）
+- 新增 `tests/workflow/test_shutdown_protocol.py`（18个测试用例）
+- 验证上下文隔离、嵌套隔离、气泡权限模式
+- 验证关闭审批流程、邮箱消息传递
+
+### Architecture Review
+
+- 新增 `docs/HGJ_vs_ClaudeCode_Architecture_Comparison.md`（架构对比分析）
+- 新增 `docs/Architecture_Optimization_Review.md`（多角色评审报告）
+- 四角色评审（PM/Developer/CodeReviewer/BugHunter）
+- 综合评分：contextvars 82.5/100，Shutdown 78.75/100
+- 决策：立即实施两项高价值优化，暂缓 Coordinator/Teammate 模式
+
 ## [1.4.1] - 2026-04-11
 
 ### Added - Hooks 强制阻止机制优化

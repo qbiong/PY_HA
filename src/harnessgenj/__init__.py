@@ -13,7 +13,7 @@ A Harness Engineering Framework for AI Agent Collaboration
 - 一键执行: 快速完成功能开发/Bug修复
 """
 
-__version__ = "1.4.1"
+__version__ = "1.4.2"
 
 # 主入口
 from harnessgenj.engine import Harness, create_harness
@@ -173,6 +173,29 @@ from harnessgenj.dashboard import (
     render_dashboard,
 )
 
+# Utils Module - 上下文隔离
+from harnessgenj.utils import (
+    AgentContext,
+    TeammateContext,
+    get_agent_context,
+    get_agent_id,
+    run_in_agent_context,
+    create_agent_context,
+    is_in_agent_context,
+    is_in_teammate_context,
+    get_context_summary,
+)
+
+# Workflow - Shutdown Protocol
+from harnessgenj.workflow.shutdown_protocol import (
+    ShutdownProtocol,
+    ShutdownRequest,
+    ShutdownResponse,
+    ShutdownStatus,
+    create_shutdown_protocol,
+    request_shutdown,
+)
+
 __all__ = [
     # 主入口
     "Harness",
@@ -299,4 +322,21 @@ __all__ = [
     # Dashboard - 终端仪表板
     "TerminalDashboard",
     "render_dashboard",
+    # Utils - 上下文隔离
+    "AgentContext",
+    "TeammateContext",
+    "get_agent_context",
+    "get_agent_id",
+    "run_in_agent_context",
+    "create_agent_context",
+    "is_in_agent_context",
+    "is_in_teammate_context",
+    "get_context_summary",
+    # Workflow - Shutdown Protocol
+    "ShutdownProtocol",
+    "ShutdownRequest",
+    "ShutdownResponse",
+    "ShutdownStatus",
+    "create_shutdown_protocol",
+    "request_shutdown",
 ]

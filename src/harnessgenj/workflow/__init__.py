@@ -122,6 +122,14 @@ from harnessgenj.workflow.task_state import (
     InvalidTransitionError,
     create_task_state_machine,
 )
+from harnessgenj.workflow.shutdown_protocol import (
+    ShutdownProtocol,
+    ShutdownRequest,
+    ShutdownResponse,
+    ShutdownStatus,
+    create_shutdown_protocol,
+    request_shutdown,
+)
 
 __all__ = [
     # Pipeline Core
@@ -198,6 +206,13 @@ __all__ = [
     "StateChangeEvent",
     "InvalidTransitionError",
     "create_task_state_machine",
+    # Shutdown Protocol
+    "ShutdownProtocol",
+    "ShutdownRequest",
+    "ShutdownResponse",
+    "ShutdownStatus",
+    "create_shutdown_protocol",
+    "request_shutdown",
     # New Workflows
     "create_intent_pipeline",
     "create_development_pipeline",
