@@ -1,7 +1,1 @@
-# 技术栈
-
-## 主要技术
-- 
-
-## 依赖管理
-- 使用 pip 或 poetry
+技术栈 > 此文件由 HarnessGenJ 自动生成，根据项目文件自动检测 > 检测置信度: 70% 主要技术 - 语言: Python - 框架: pytest, Vue, FastAPI, Flask, Django, React - 包管理器: poetry 版本要求 - python: >=3.11 数据库 - Redis - MySQL 测试框架 - pytest

@@ -1,0 +1,16 @@
+{
+  "event_type": "on_write_complete",
+  "timestamp": 1775820989.154937,
+  "mode": "builtin",
+  "data": {
+    "file_path": "unknown.py",
+    "content_length": 15,
+    "content": "feature_request",
+    "metadata": {
+      "task_id": "TASK-150342800-1a9e",
+      "feature": "\n实现框架强制集成代理模式，确保所有代码修改操作都经过框架许可：\n\n1. 创建 FrameworkSession 类管理会话状态\n   - active_task_id: 当前活动任务ID\n   - permitted_files: 允许修改的文件列表\n   - operation_mode: 操作模式 (framework/direct)\n\n2. 修改 Hooks 增加权限检查\n   - PreToolUse 时检查文件是否在许可范围内\n   - 未许可时阻止操作并提示用户\n\n3. 修改 Harness.develop() 签发许可\n   - 创建任务时签发操作许可\n   - 返回许可信息供AI查看\n\n4. 目标：让AI无法绕过框架直接修改代码\n"
+    }
+  },
+  "success": true,
+  "error": null
+}

@@ -37,6 +37,12 @@ from harnessgenj.workflow.message_bus import (
     create_message_bus,
 )
 from harnessgenj.workflow.coordinator import WorkflowCoordinator
+from harnessgenj.utils.agent_context import (
+    AgentContext,
+    create_agent_context,
+    run_in_agent_context,
+    get_agent_context,
+)
 
 
 class CollaborationRole(BaseModel):
@@ -220,21 +226,31 @@ class RoleCollaborationManager:
         errors: dict[str, str] = {}
 
         def execute_task(role_id: str, task_data: dict[str, Any]) -> dict[str, Any]:
-            """执行单个任务"""
+            """执行单个任务（带上下文隔离）"""
             role = self.coordinator.get_role(role_id)
             if not role:
                 raise ValueError(f"Role not found: {role_id}")
 
-            self._update_role_status(role_id, "working", task_data)
+            # 创建 Agent 上下文（参考 Claude Code AsyncLocalStorage）
+            agent_context = create_agent_context(
+                agent_id=role_id,
+                role_type=role.role_type.value,
+                permission_mode="normal",
+            )
 
-            try:
-                role.assign_task(task_data)
-                result = role.execute_task()
-                self._update_role_status(role_id, "idle")
-                return result
-            except Exception as e:
-                self._update_role_status(role_id, "idle")
-                raise e
+            # 在隔离上下文中执行任务
+            def _run_in_context() -> dict[str, Any]:
+                self._update_role_status(role_id, "working", task_data)
+                try:
+                    role.assign_task(task_data)
+                    result = role.execute_task()
+                    self._update_role_status(role_id, "idle")
+                    return result
+                except Exception as e:
+                    self._update_role_status(role_id, "idle")
+                    raise e
+
+            return run_in_agent_context(agent_context, _run_in_context)
 
         with self._lock:
             for i, task_item in enumerate(tasks):

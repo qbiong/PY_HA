@@ -1,0 +1,14 @@
+{
+  "event_type": "on_issue_found",
+  "timestamp": 1775828889.6857228,
+  "mode": "builtin",
+  "data": {
+    "generator_id": "dev_1",
+    "discriminator_id": "reviewer_1",
+    "severity": "major",
+    "description": "测试问题",
+    "task_id": null
+  },
+  "success": true,
+  "error": null
+}

@@ -5,6 +5,39 @@ All notable changes to HarnessGenJ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] - 2026-04-11
+
+### Added - Architecture Integration（架构集成完成）
+
+**contextvars 上下文隔离集成**（已集成到 ThreadPoolExecutor）：
+- [workflow/collaboration.py](src/harnessgenj/workflow/collaboration.py#L200-249): `execute_parallel()` 现在包装 `run_in_agent_context()`
+- 并行任务执行时每个 Agent 拥有独立上下文（agent_id, role_type, permission_mode）
+- 解决多线程环境下上下文混乱问题
+
+**Shutdown 协议集成**（已集成到 WorkflowCoordinator）：
+- [workflow/coordinator.py](src/harnessgenj/workflow/coordinator.py#L508-570): 新增 Shutdown Protocol 集成方法
+- `request_shutdown()`: 发送关闭请求
+- `handle_shutdown_request()`: 处理关闭请求并返回响应
+- `check_shutdown_status()`: 检查当前关闭状态
+- `_get_pending_tasks_for_agent()`: 获取未完成任务列表
+- `_cleanup_agent()`: 清理角色资源
+- 未完成任务拒绝关闭，无任务同意关闭
+
+### Architecture Review
+
+- 新增 [Architecture_Comprehensive_Review.md](docs/Architecture_Comprehensive_Review.md) 综合审查报告
+- **JVM Memory System**: ✅ 完整无损（分代管理 + DOCUMENT_OWNERSHIP）
+- **GAN Adversarial Review**: ✅ 完整无损（Developer↔CodeReviewer/BugHunter）
+- **Hooks Enforcement**: ✅ 正常运作（与GAN正确协作）
+- **contextvars**: ✅ 已集成到并行执行器
+- **Shutdown Protocol**: ✅ 已集成到工作流协调器
+
+### Changed
+
+- `execute_parallel()` 现在使用 contextvars 进行上下文隔离
+- `WorkflowCoordinator.__init__()` 新增 `_shutdown_protocol` 实例
+- 所有 1129 个测试通过
+
 ## [1.4.2] - 2026-04-11
 
 ### Added - Claude Code 架构优化（高价值项）

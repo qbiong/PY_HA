@@ -1,0 +1,19 @@
+{
+  "records": [
+    {
+      "timestamp": 1775828890.7234132,
+      "intent_type": "development",
+      "confidence": 0.6,
+      "message_preview": "你好，我需要一个功能"
+    },
+    {
+      "timestamp": 1775829182.0624063,
+      "intent_type": "development",
+      "confidence": 0.6,
+      "message_preview": "你好，我需要一个功能"
+    }
+  ],
+  "stats": {
+    "development": 2
+  }
+}

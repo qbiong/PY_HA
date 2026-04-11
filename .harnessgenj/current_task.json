@@ -1,9 +1,9 @@
 {
-  "task_id": "TASK-496103100-1779",
-  "request": "你好，我需要一个功能",
+  "task_id": "TASK-411267600-dee7",
+  "request": "全面架构审查 - 检查JVM记忆管理、GAN对抗审查、新增功能冲突",
   "type": "feature",
   "category": "功能开发",
   "priority": "P1",
   "status": "pending",
-  "created_at": "2026-04-06 12:39"
+  "created_at": "2026-04-11 01:41"
 }

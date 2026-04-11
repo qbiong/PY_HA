@@ -4,8 +4,8 @@
       "role_type": "developer",
       "role_id": "developer_1",
       "role_name": "开发者",
-      "score": 100,
-      "total_tasks": 0,
+      "score": 174,
+      "total_tasks": 29,
       "success_tasks": 0,
       "failed_tasks": 0,
       "issues_found": 0,
@@ -19,8 +19,8 @@
       "role_type": "code_reviewer",
       "role_id": "code_reviewer_1",
       "role_name": "代码审查者",
-      "score": 100,
-      "total_tasks": 0,
+      "score": 116,
+      "total_tasks": 9,
       "success_tasks": 0,
       "failed_tasks": 0,
       "issues_found": 0,
@@ -59,7 +59,68 @@
       "issues_missed": 0,
       "created_at": 1775402124.3188207,
       "updated_at": 1775402124.318821
+    },
+    "dev_auto": {
+      "role_type": "developer",
+      "role_id": "dev_auto",
+      "role_name": "developer",
+      "score": 100,
+      "total_tasks": 0,
+      "success_tasks": 0,
+      "failed_tasks": 0,
+      "issues_found": 0,
+      "issues_valid": 0,
+      "issues_false_positive": 0,
+      "issues_missed": 0,
+      "created_at": 1775820989.1560152,
+      "updated_at": 1775821411.7031674
+    },
+    "hunter_adv": {
+      "role_type": "bug_hunter",
+      "role_id": "hunter_adv",
+      "role_name": "bug_hunter",
+      "score": 100,
+      "total_tasks": 0,
+      "success_tasks": 0,
+      "failed_tasks": 0,
+      "issues_found": 0,
+      "issues_valid": 0,
+      "issues_false_positive": 0,
+      "issues_missed": 0,
+      "created_at": 1775820989.1563187,
+      "updated_at": 1775820989.156319
     }
   },
-  "events": []
+  "events": [
+    {
+      "timestamp": 1775820989.1572652,
+      "role_type": "developer",
+      "role_id": "dev_auto",
+      "event_type": "task_success",
+      "delta": 10,
+      "reason": "任务通过（1轮）",
+      "task_id": "TASK-150342800-1a9e",
+      "severity": null
+    },
+    {
+      "timestamp": 1775821023.0524323,
+      "role_type": "developer",
+      "role_id": "dev_auto",
+      "event_type": "task_success",
+      "delta": 10,
+      "reason": "任务通过（1轮）",
+      "task_id": "TASK-37048700-295a",
+      "severity": null
+    },
+    {
+      "timestamp": 1775821411.703173,
+      "role_type": "developer",
+      "role_id": "dev_auto",
+      "event_type": "task_success",
+      "delta": 10,
+      "reason": "任务通过（1轮）",
+      "task_id": "TASK-696352300-47e6",
+      "severity": null
+    }
+  ]
 }

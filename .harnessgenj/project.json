@@ -1,16 +1,16 @@
 {
   "info": {
-    "name": "Default Project",
-    "description": "",
-    "tech_stack": "",
-    "status": "init",
-    "created_at": 1775397109.3865001,
-    "updated_at": 1775397109.3865004
+    "name": "HarnessGenJ (HGJ) - Harness Engineering with JVM-style Generational Memory",
+    "description": "<div align=\"center\">  **Harness Engineering + JVM 分代记忆 + GAN 对抗机制的 AI Agent 协作框架**  通过**角色驱动**和**工作流驱动**实现高效的开发协作",
+    "tech_stack": "Python + FastAPI + Flask + Vue",
+    "status": "initialized",
+    "created_at": 1775829162.720784,
+    "updated_at": 1775829162.7207844
   },
   "stats": {
-    "features_total": 44,
+    "features_total": 11,
     "features_completed": 0,
-    "bugs_total": 22,
+    "bugs_total": 1,
     "bugs_fixed": 0,
     "progress": 0
   }

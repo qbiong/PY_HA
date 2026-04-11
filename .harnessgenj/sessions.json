@@ -1,0 +1,16 @@
+{
+  "sessions": [
+    {
+      "id": "d909e8ea",
+      "name": "项目经理对话",
+      "session_type": "project_manager",
+      "messages": [],
+      "context": {},
+      "important_memories": [],
+      "created_at": 1775660037.2668402,
+      "updated_at": 1775660037.2668405
+    }
+  ],
+  "active_session_id": "d909e8ea",
+  "saved_at": 1775843504.8453584
+}

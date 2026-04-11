@@ -1,0 +1,14 @@
+{
+  "event_type": "on_task_complete",
+  "timestamp": 1775821411.7124543,
+  "mode": "builtin",
+  "data": {
+    "task_id": "TASK-696352300-47e6",
+    "summary": "功能完成: 实现框架强制集成代理模式 - Hooks权限检查和engine签发许可",
+    "metadata": {
+      "rounds": 1
+    }
+  },
+  "success": true,
+  "error": null
+}

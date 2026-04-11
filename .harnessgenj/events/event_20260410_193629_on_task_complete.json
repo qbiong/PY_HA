@@ -1,0 +1,14 @@
+{
+  "event_type": "on_task_complete",
+  "timestamp": 1775820989.168506,
+  "mode": "builtin",
+  "data": {
+    "task_id": "TASK-150342800-1a9e",
+    "summary": "功能完成: \n实现框架强制集成代理模式，确保所有代码修改操作都经过框架许可：\n\n1. 创建 FrameworkS",
+    "metadata": {
+      "rounds": 1
+    }
+  },
+  "success": true,
+  "error": null
+}

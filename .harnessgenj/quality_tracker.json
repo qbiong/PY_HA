@@ -1,0 +1,97 @@
+{
+  "records": [
+    {
+      "record_id": "ADV-de77681e",
+      "task_id": "TASK-150342800-1a9e",
+      "generator_id": "dev_auto",
+      "generator_type": "developer",
+      "discriminator_id": "hunter_adv",
+      "discriminator_type": "bug_hunter",
+      "artifact_type": "code",
+      "artifact_content": "feature_request",
+      "rounds": [
+        {
+          "round_number": 1,
+          "generator_output": "feature_request",
+          "discriminator_findings": [],
+          "passed": true,
+          "started_at": 1775820989.156621,
+          "ended_at": 1775820989.157218
+        }
+      ],
+      "current_round": 1,
+      "max_rounds": 3,
+      "final_result": "passed",
+      "total_issues": 0,
+      "resolved_issues": 0,
+      "false_positives": 0,
+      "generator_score_delta": 10,
+      "discriminator_score_delta": 0,
+      "created_at": 1775820989.1566074,
+      "completed_at": 1775820989.157233,
+      "metadata": {}
+    },
+    {
+      "record_id": "ADV-cc96e9a9",
+      "task_id": "TASK-37048700-295a",
+      "generator_id": "dev_auto",
+      "generator_type": "developer",
+      "discriminator_id": "hunter_adv",
+      "discriminator_type": "bug_hunter",
+      "artifact_type": "code",
+      "artifact_content": "bug_report",
+      "rounds": [
+        {
+          "round_number": 1,
+          "generator_output": "bug_report",
+          "discriminator_findings": [],
+          "passed": true,
+          "started_at": 1775821023.051775,
+          "ended_at": 1775821023.0523953
+        }
+      ],
+      "current_round": 1,
+      "max_rounds": 3,
+      "final_result": "passed",
+      "total_issues": 0,
+      "resolved_issues": 0,
+      "false_positives": 0,
+      "generator_score_delta": 10,
+      "discriminator_score_delta": 0,
+      "created_at": 1775821023.0517623,
+      "completed_at": 1775821023.0524096,
+      "metadata": {}
+    },
+    {
+      "record_id": "ADV-53dfc073",
+      "task_id": "TASK-696352300-47e6",
+      "generator_id": "dev_auto",
+      "generator_type": "developer",
+      "discriminator_id": "hunter_adv",
+      "discriminator_type": "bug_hunter",
+      "artifact_type": "code",
+      "artifact_content": "feature_request",
+      "rounds": [
+        {
+          "round_number": 1,
+          "generator_output": "feature_request",
+          "discriminator_findings": [],
+          "passed": true,
+          "started_at": 1775821411.7025466,
+          "ended_at": 1775821411.7031283
+        }
+      ],
+      "current_round": 1,
+      "max_rounds": 3,
+      "final_result": "passed",
+      "total_issues": 0,
+      "resolved_issues": 0,
+      "false_positives": 0,
+      "generator_score_delta": 10,
+      "discriminator_score_delta": 0,
+      "created_at": 1775821411.7025337,
+      "completed_at": 1775821411.7031417,
+      "metadata": {}
+    }
+  ]
+}

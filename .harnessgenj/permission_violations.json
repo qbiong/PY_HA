@@ -1,0 +1,57 @@
+{
+  "violations": [
+    {
+      "timestamp": 1775748412.1019278,
+      "role_id": "architect_07e5de1b",
+      "role_type": "architect",
+      "permission": "edit_code",
+      "reason": "architect 没有 edit_code 权限",
+      "blocked": true
+    },
+    {
+      "timestamp": 1775748412.1095312,
+      "role_id": "project_manager_1",
+      "role_type": "project_manager",
+      "permission": "edit_code",
+      "reason": "项目经理 没有 edit_code 权限",
+      "blocked": true
+    },
+    {
+      "timestamp": 1775748414.1499903,
+      "role_id": "architect_232ee15f",
+      "role_type": "architect",
+      "permission": "edit_code",
+      "reason": "architect 没有 edit_code 权限",
+      "blocked": true
+    },
+    {
+      "timestamp": 1775748414.1542654,
+      "role_id": "project_manager_1",
+      "role_type": "project_manager",
+      "permission": "edit_code",
+      "reason": "项目经理 没有 edit_code 权限",
+      "blocked": true
+    },
+    {
+      "timestamp": 1775821023.0451455,
+      "role_id": "architect_f4371e21",
+      "role_type": "architect",
+      "permission": "edit_code",
+      "reason": "architect 没有 edit_code 权限",
+      "blocked": true
+    },
+    {
+      "timestamp": 1775821023.0512302,
+      "role_id": "project_manager_e68e4175",
+      "role_type": "project_manager",
+      "permission": "edit_code",
+      "reason": "project_manager 没有 edit_code 权限",
+      "blocked": true
+    }
+  ],
+  "stats": {
+    "total_violations": 6,
+    "architect_violations": 3,
+    "project_manager_violations": 3
+  }
+}

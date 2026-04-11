@@ -14,6 +14,13 @@ import time
 
 from harnessgenj.workflow.pipeline import WorkflowPipeline, WorkflowStage, StageStatus
 from harnessgenj.workflow.context import WorkflowContext
+from harnessgenj.workflow.shutdown_protocol import (
+    ShutdownProtocol,
+    ShutdownRequest,
+    ShutdownResponse,
+    ShutdownStatus,
+    create_shutdown_protocol,
+)
 from harnessgenj.roles.base import AgentRole, RoleType, create_role
 
 
@@ -43,6 +50,8 @@ class WorkflowCoordinator:
         self._workflows: dict[str, WorkflowPipeline] = {}
         self._contexts: dict[str, WorkflowContext] = {}
         self._stats = CoordinatorStats()
+        # Shutdown Protocol（参考 Claude Code shutdown_request/shutdown_response）
+        self._shutdown_protocol = create_shutdown_protocol()
 
     # ==================== 角色管理 ====================
 
@@ -505,6 +514,97 @@ class WorkflowCoordinator:
             "reviewer_id": discriminator.role_id,
             "intensity": intensity,
         }
+
+    # ==================== Shutdown Protocol ====================
+
+    def request_shutdown(
+        self,
+        agent_id: str,
+        requester_id: str,
+        reason: str,
+        timeout_seconds: float = 30.0,
+    ) -> ShutdownRequest:
+        """
+        发送关闭请求（参考 Claude Code shutdown_request）
+
+        Args:
+            agent_id: 目标角色ID
+            requester_id: 请求者ID
+            reason: 关闭原因
+            timeout_seconds: 超时时间
+
+        Returns:
+            ShutdownRequest 实例
+        """
+        # 更新未完成任务列表
+        pending_tasks = self._get_pending_tasks_for_agent(agent_id)
+        self._shutdown_protocol.set_pending_tasks(pending_tasks)
+
+        request = self._shutdown_protocol.create_request(
+            agent_id=agent_id,
+            requester_id=requester_id,
+            reason=reason,
+            timeout_seconds=timeout_seconds,
+        )
+
+        return request
+
+    def handle_shutdown_request(self, request: ShutdownRequest) -> ShutdownResponse:
+        """
+        处理关闭请求（参考 Claude Code shutdown_response）
+
+        Args:
+            request: 关闭请求
+
+        Returns:
+            ShutdownResponse 实例
+        """
+        response = self._shutdown_protocol.handle_request(request)
+
+        # 如果批准关闭，执行清理
+        if response.approved:
+            self._cleanup_agent(request.agent_id)
+
+        return response
+
+    def check_shutdown_status(self) -> ShutdownStatus:
+        """检查当前关闭状态"""
+        if self._shutdown_protocol.is_shutdown_approved():
+            return ShutdownStatus.APPROVED
+        elif self._shutdown_protocol.is_shutdown_requested():
+            return ShutdownStatus.PENDING
+        else:
+            return ShutdownStatus.PENDING
+
+    def _get_pending_tasks_for_agent(self, agent_id: str) -> list[str]:
+        """获取角色的未完成任务"""
+        pending = []
+
+        # 检查工作流中的未完成阶段
+        for workflow_id, pipeline in self._workflows.items():
+            status = pipeline.get_status()
+            if status["pending"] > 0 or status["running"] > 0:
+                for stage_name, stage in pipeline._stages.items():
+                    if stage.status in (StageStatus.PENDING, StageStatus.RUNNING):
+                        pending.append(f"{workflow_id}:{stage_name}")
+
+        # 检查角色当前任务
+        role = self._roles.get(agent_id)
+        if role and hasattr(role, "_current_task") and role._current_task:
+            pending.append(f"{agent_id}:current_task")
+
+        return pending
+
+    def _cleanup_agent(self, agent_id: str) -> None:
+        """清理角色资源"""
+        # 取消未完成任务
+        role = self._roles.get(agent_id)
+        if role:
+            # 记录最后活动
+            role._last_activity = time.time()
+
+        # 清理消息队列（如果有协作管理器）
+        # 这部分会在集成到 Engine 时完成
 
 
 # ==================== 便捷函数 ====================

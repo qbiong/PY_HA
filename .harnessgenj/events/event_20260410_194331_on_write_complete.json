@@ -1,0 +1,16 @@
+{
+  "event_type": "on_write_complete",
+  "timestamp": 1775821411.701361,
+  "mode": "builtin",
+  "data": {
+    "file_path": "unknown.py",
+    "content_length": 15,
+    "content": "feature_request",
+    "metadata": {
+      "task_id": "TASK-696352300-47e6",
+      "feature": "实现框架强制集成代理模式 - Hooks权限检查和engine签发许可"
+    }
+  },
+  "success": true,
+  "error": null
+}
