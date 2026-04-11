@@ -5,6 +5,24 @@ All notable changes to HarnessGenJ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-04-11
+
+### Fixed - 架构审视修复
+
+**消除代码冗余**：
+- cli.py: 删除重复的 hook 函数定义，改为调用 hooks_auto_setup.auto_setup_hooks()
+- 创建 utils/hooks_common.py: 公共 Hook 函数模板模块
+- 创建 common/knowledge_types.py: 统一知识类型定义（KnowledgeType, KnowledgeEntry）
+
+**engine.py 修复**：
+- 添加缺失的 `_load_state()` 方法
+
+### Testing
+
+- 测试总数：1144
+- 通过率：100%
+- 执行时间：4.65秒
+
 ## [1.5.0] - 2026-04-11
 
 ### Added - 核心能力扩展：自主执行与自我进化
