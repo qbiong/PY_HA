@@ -269,6 +269,12 @@ from pathlib import Path
 from datetime import datetime
 
 
+def log_exception(e: Exception, context: str = "", level: int = 30) -> None:
+    """记录异常信息到 stderr（独立实现，不依赖框架）"""
+    level_str = "ERROR" if level >= 40 else "WARNING" if level >= 30 else "INFO"
+    print(f"[HarnessGenJ {level_str}] [{context}] {type(e).__name__}: {e}", file=sys.stderr)
+
+
 def get_project_root() -> Path:
     """获取项目根目录"""
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR")

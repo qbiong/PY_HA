@@ -96,7 +96,7 @@
     "importance": 70
   },
   "tech_info": {
-    "content": "{\"main_language\":\"Python\",\"frameworks\":[\"Vue\",\"FastAPI\",\"React\",\"Django\",\"pytest\",\"Flask\"],\"build_tools\":[],\"package_managers\":[\"poetry\"],\"databases\":[\"MySQL\",\"Redis\"],\"testing_frameworks\":[\"pytest\"],\"deployment\":[],\"platforms\":[],\"version_info\":{\"python\":\">=3.11\"},\"confidence\":0.7,\"java_version\":null,\"kotlin_version\":null,\"python_version\":null,\"node_version\":null,\"android_sdk_version\":null,\"min_sdk_version\":null,\"target_sdk_version\":null}",
+    "content": "{\"main_language\":\"Python\",\"frameworks\":[\"Django\",\"React\",\"pytest\",\"Vue\",\"Flask\",\"FastAPI\"],\"build_tools\":[],\"package_managers\":[\"poetry\"],\"databases\":[\"MySQL\",\"Redis\"],\"testing_frameworks\":[\"pytest\"],\"deployment\":[],\"platforms\":[],\"version_info\":{\"python\":\">=3.11\"},\"confidence\":0.7,\"java_version\":null,\"kotlin_version\":null,\"python_version\":null,\"node_version\":null,\"android_sdk_version\":null,\"min_sdk_version\":null,\"target_sdk_version\":null}",
     "importance": 80
   },
   "tech_templates_updated": {

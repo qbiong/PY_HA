@@ -5,9 +5,55 @@ All notable changes to HarnessGenJ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.4] - 2026-04-11
+## [1.4.6] - 2026-04-11
+
+### Fixed - 新项目引入关键问题修复
+
+**Hook 脚本模板修复**（严重问题）：
+- [hooks_auto_setup.py:265-277](src/harnessgenj/harness/hooks_auto_setup.py#L265-277): 生成的 Hook 脚本缺少 `log_exception` 函数定义
+- Hook 脚本现在包含独立的 `log_exception` 实现，不再依赖框架导入
+- 解决 NameError 导致 Hooks 完全失效的问题
+
+**项目级 CLAUDE.md 自动生成**（严重问题）：
+- [engine.py:689-780](src/harnessgenj/engine.py#L689-780): `from_project()` 现在自动创建项目级 CLAUDE.md
+- `_ensure_project_claude_md()`: 检查并创建/追加 HGJ 框架指令
+- `_get_hgj_claude_md_section()`: HGJ 框架指令片段
+- `_get_full_claude_md_content()`: 完整 CLAUDE.md 内容
+- 解决 Claude Code 启动时不加载 HGJ 框架指令的问题
+
+### Added - 问题分析报告
+
+**UVM 项目 HGJ 使用情况分析**：
+- 发现问题：Hook 脚本因 log_exception 未定义而失效
+- 发现问题：项目根目录缺少 CLAUDE.md 导致框架未激活
+- 发现问题：积分系统无变化（框架被动状态）
+- 发现问题：documents 目录为空（文档未生成）
+
+### Testing
+
+- 测试总数：1144
+- 通过率：100%
+- 执行时间：4.33秒
+
+## [1.4.5] - 2026-04-11
 
 ### Added - HGJ 模块引入指南
+
+**新项目引入流程**：
+- 新增 [HGJ_Integration_Guide.md](docs/HGJ_Integration_Guide.md) 完整引入指南
+- Step 1: 创建 `.harnessgenj/` 目录结构
+- Step 2: 创建 CLAUDE.md 项目级指令
+- Step 3: 框架初始化 `Harness.from_project(".")`
+- Step 4: 一句话启动 "使用HGJ框架"
+
+**HGJ 与 Claude Code 原生多智能体关系分析**：
+- ✅ **无冲突，互补增强**
+- HGJ 是增强层，而非替代 Claude Code 原生 Agent
+- 技术栈独立（Python vs TypeScript），不冲突
+- 功能互补：HGJ 用于开发任务，原生 Agent 用于通用任务
+- Hooks 协同：HGJ 挂载到原生 Hooks
+
+## [1.4.4] - 2026-04-11
 
 **新项目引入流程**：
 - 新增 [HGJ_Integration_Guide.md](docs/HGJ_Integration_Guide.md) 完整引入指南

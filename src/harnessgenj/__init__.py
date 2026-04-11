@@ -13,7 +13,7 @@ A Harness Engineering Framework for AI Agent Collaboration
 - 一键执行: 快速完成功能开发/Bug修复
 """
 
-__version__ = "1.4.5"
+__version__ = "1.4.6"
 
 # 主入口
 from harnessgenj.engine import Harness, create_harness

@@ -584,6 +584,9 @@ class Harness:
         if not hooks_status["hooks_configured"]:
             auto_setup_hooks(project_path, silent=False)
 
+        # ==================== 新增：自动创建项目级 CLAUDE.md ====================
+        harness._ensure_project_claude_md(project_path, project_name)
+
         # 导入文档到记忆系统
         harness._import_documents(documents)
 
@@ -683,7 +686,201 @@ class Harness:
         self.memory.project_info.status = "initialized"
         self.memory._save()
 
-    def _load_state(self) -> bool:
+    def _ensure_project_claude_md(self, project_path: str, project_name: str) -> None:
+        """
+        确保项目根目录存在 CLAUDE.md 文件
+
+        如果不存在，自动创建包含 HGJ 框架指令的项目级配置文件
+
+        Args:
+            project_path: 项目根目录
+            project_name: 项目名称
+        """
+        claude_md_path = os.path.join(project_path, "CLAUDE.md")
+
+        if os.path.exists(claude_md_path):
+            # 已存在，检查是否包含 HGJ 框架指令
+            try:
+                with open(claude_md_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                # 如果已包含 HGJ 触发词，无需修改
+                if "使用HGJ框架" in content or "HGJ框架辅助开发" in content:
+                    return
+
+                # 否则追加 HGJ 框架指令
+                hgj_section = self._get_hgj_claude_md_section(project_name)
+                with open(claude_md_path, "a", encoding="utf-8") as f:
+                    f.write("\n\n" + hgj_section)
+            except Exception as e:
+                log_exception(e, context="_ensure_project_claude_md", level=30)
+            return
+
+        # 不存在，创建新的 CLAUDE.md
+        content = self._get_full_claude_md_content(project_name)
+        try:
+            with open(claude_md_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except Exception as e:
+            log_exception(e, context="_ensure_project_claude_md_create", level=30)
+
+    def _get_hgj_claude_md_section(self, project_name: str) -> str:
+        """获取 HGJ 框架 CLAUDE.md 指令片段"""
+        return f'''
+---
+
+## 🎯 HGJ 框架指令
+
+**当用户消息包含以下触发词时，必须立即执行框架初始化：**
+
+| 触发词 | 立即执行 |
+|--------|----------|
+| "使用HGJ框架" | ✅ 初始化框架并进入框架模式 |
+| "HGJ框架辅助开发" | ✅ 初始化框架并进入框架模式 |
+| "HGJ开发" | ✅ 初始化框架并开发功能 |
+| "HGJ修复" | ✅ 初始化框架并修复Bug |
+
+### 🚀 框架初始化代码
+
+```python
+from harnessgenj import Harness
+
+# 初始化框架（必须执行）
+harness = Harness.from_project(".")
+
+# 显示状态
+status = harness.get_status()
+print(f"✅ HGJ框架已就绪")
+print(f"   项目: {status['project']}")
+print(f"   团队: {status['team']['size']} 个角色")
+```
+
+### ⚠️ 强制规则
+
+**所有代码修改必须通过框架执行：**
+
+```python
+# 开发功能
+result = harness.develop("功能描述")
+harness.complete_task(result['task_id'], "摘要")
+
+# 修复 Bug
+result = harness.fix_bug("问题描述")
+harness.complete_task(result['task_id'], "摘要")
+```
+
+**禁止跳过框架直接编码**
+'''
+
+    def _get_full_claude_md_content(self, project_name: str) -> str:
+        """获取完整的 CLAUDE.md 内容"""
+        return f'''# {project_name} 项目开发规范
+
+> 此文件为 Claude Code 项目级指令，确保 AI 在开发过程中主动使用框架功能
+
+---
+
+## 🎯 HGJ 框架触发词
+
+**当用户消息包含以下触发词时，必须立即执行框架初始化：**
+
+| 触发词 | 立即执行 |
+|--------|----------|
+| "使用HGJ框架" | ✅ 初始化框架并进入框架模式 |
+| "HGJ框架辅助开发" | ✅ 初始化框架并进入框架模式 |
+| "HGJ开发" | ✅ 初始化框架并开发功能 |
+| "HGJ修复" | ✅ 初始化框架并修复Bug |
+
+### 🚀 框架初始化代码
+
+```python
+from harnessgenj import Harness
+
+# 初始化框架（必须执行）
+harness = Harness.from_project(".")
+
+# 显示状态
+status = harness.get_status()
+print(f"""
+✅ HGJ框架已就绪
+   项目: {status['project']}
+   团队: {status['team']['size']} 个角色
+
+📋 您可以直接说：
+   - "实现XXX功能"
+   - "修复XXX问题"
+
+💡 框架会自动：
+   - 签发操作许可
+   - 执行质量检查
+   - 更新积分排名
+""")
+```
+
+---
+
+## ⚠️ 强制规则
+
+**当用户消息包含以下开发关键词时，必须使用框架工具：**
+
+| 关键词模式 | 必须使用 |
+|------------|----------|
+| 实现、开发、添加、创建、编写功能 | `harness.develop("描述")` |
+| 修复、解决、调试、bug | `harness.fix_bug("描述")` |
+| 审查、检查代码 | `harness.quick_review(code)` |
+| 状态、进度、任务 | `harness.get_status()` |
+
+**❌ 禁止行为：跳过框架直接编码**
+
+**✅ 正确流程：框架签发许可 → 执行指令 → 完成任务**
+
+---
+
+## 🔄 标准开发流程
+
+```python
+# 1. 通过框架开发
+result = harness.develop("功能描述")
+
+# 2. 查看操作指令
+print(f"任务ID: {result['task_id']}")
+print(f"许可文件: {result['permitted_files']}")
+
+# 3. 在许可范围内执行代码修改
+# ... 编写代码 ...
+
+# 4. 完成任务
+harness.complete_task(result['task_id'], "功能已完成")
+```
+
+---
+
+## 🎭 角色说明
+
+| 角色 | 职责 | 禁止 |
+|------|------|------|
+| Developer | 编写代码 | 修改架构设计 |
+| CodeReviewer | 审查代码 | 修改代码 |
+| ProjectManager | 协调任务 | 修改代码 |
+| BugHunter | 安全审查 | 修改代码 |
+
+---
+
+## 💰 积分系统
+
+```
+🏆 90+ 分 - 团队核心成员
+⭐ 70-89 分 - 稐定贡献者
+📌 50-69 分 - 需要提升
+⚠️ <50 分 - 警告
+```
+
+**使用框架开发 = 获得积分奖励 = 提升职业信誉**
+
+---
+
+**记住：用户只需说"使用HGJ框架"，AI 就应该自动初始化并引导后续操作。**
+'''
         """加载之前的工作状态"""
         state_path = os.path.join(self._workspace, "state.json")
         if not os.path.exists(state_path):

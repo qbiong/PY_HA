@@ -640,6 +640,38 @@
         "tool": "Edit",
         "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\src\\harnessgenj\\__init__.py"
       }
+    },
+    {
+      "timestamp": "2026-04-11T13:12:08.261969",
+      "operation": "unauthorized_tool_use_blocked",
+      "details": {
+        "tool": "Edit",
+        "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\src\\harnessgenj\\engine.py"
+      }
+    },
+    {
+      "timestamp": "2026-04-11T13:15:45.392791",
+      "operation": "unauthorized_tool_use_blocked",
+      "details": {
+        "tool": "Edit",
+        "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\CHANGELOG.md"
+      }
+    },
+    {
+      "timestamp": "2026-04-11T13:16:04.689685",
+      "operation": "unauthorized_tool_use_blocked",
+      "details": {
+        "tool": "Edit",
+        "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\pyproject.toml"
+      }
+    },
+    {
+      "timestamp": "2026-04-11T13:16:19.520996",
+      "operation": "unauthorized_tool_use_blocked",
+      "details": {
+        "tool": "Edit",
+        "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\src\\harnessgenj\\__init__.py"
+      }
     }
   ]
 }
