@@ -559,6 +559,10 @@ class WorkflowCoordinator:
         Returns:
             ShutdownResponse 实例
         """
+        # 先更新未完成任务列表（确保实时状态）
+        pending_tasks = self._get_pending_tasks_for_agent(request.agent_id)
+        self._shutdown_protocol.set_pending_tasks(pending_tasks)
+
         response = self._shutdown_protocol.handle_request(request)
 
         # 如果批准关闭，执行清理
@@ -583,7 +587,9 @@ class WorkflowCoordinator:
         # 检查工作流中的未完成阶段
         for workflow_id, pipeline in self._workflows.items():
             status = pipeline.get_status()
-            if status["pending"] > 0 or status["running"] > 0:
+            # 未完成任务 = 总数 - 已完成 - 失败
+            unfinished = status["total_stages"] - status["completed"] - status["failed"]
+            if unfinished > 0 or status["running"] > 0:
                 for stage_name, stage in pipeline._stages.items():
                     if stage.status in (StageStatus.PENDING, StageStatus.RUNNING):
                         pending.append(f"{workflow_id}:{stage_name}")

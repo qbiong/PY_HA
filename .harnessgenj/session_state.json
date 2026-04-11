@@ -568,6 +568,54 @@
         "tool": "Edit",
         "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\src\\harnessgenj\\__init__.py"
       }
+    },
+    {
+      "timestamp": "2026-04-11T10:16:49.794271",
+      "operation": "unauthorized_tool_use_blocked",
+      "details": {
+        "tool": "Edit",
+        "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\src\\harnessgenj\\workflow\\coordinator.py"
+      }
+    },
+    {
+      "timestamp": "2026-04-11T10:19:44.536176",
+      "operation": "unauthorized_tool_use_blocked",
+      "details": {
+        "tool": "Edit",
+        "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\src\\harnessgenj\\workflow\\coordinator.py"
+      }
+    },
+    {
+      "timestamp": "2026-04-11T10:48:27.011544",
+      "operation": "unauthorized_tool_use_blocked",
+      "details": {
+        "tool": "Write",
+        "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\docs\\Test_Report_v1.4.3.md"
+      }
+    },
+    {
+      "timestamp": "2026-04-11T10:48:49.022488",
+      "operation": "unauthorized_tool_use_blocked",
+      "details": {
+        "tool": "Edit",
+        "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\CHANGELOG.md"
+      }
+    },
+    {
+      "timestamp": "2026-04-11T10:49:11.581860",
+      "operation": "unauthorized_tool_use_blocked",
+      "details": {
+        "tool": "Edit",
+        "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\pyproject.toml"
+      }
+    },
+    {
+      "timestamp": "2026-04-11T10:49:22.550454",
+      "operation": "unauthorized_tool_use_blocked",
+      "details": {
+        "tool": "Edit",
+        "file_path": "c:\\Users\\biong\\Desktop\\HarnessGenJ\\src\\harnessgenj\\__init__.py"
+      }
     }
   ]
 }

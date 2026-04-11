@@ -5,6 +5,39 @@ All notable changes to HarnessGenJ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] - 2026-04-11
+
+### Fixed - 测试验证BUG修复
+
+**Shutdown Protocol 实时状态检测**：
+- [workflow/coordinator.py:566-575](src/harnessgenj/workflow/coordinator.py#L566-575): `handle_shutdown_request()` 现在实时获取未完成任务
+- 修复关闭请求时未检测到已启动工作流的问题
+
+**Pipeline 状态字段兼容**：
+- [workflow/coordinator.py:586](src/harnessgenj/workflow/coordinator.py#L586): 使用 `total_stages - completed - failed` 计算未完成数
+- 解决 KeyError: 'pending' 问题
+
+### Testing - 详尽测试验证
+
+**新增架构集成测试**（15个测试用例）：
+- [test_architecture_integration.py](tests/integration/test_architecture_integration.py)
+- 上下文隔离验证（线程间、嵌套）
+- 关闭审批流程验证（未完成任务拒绝）
+- 边界条件测试（空值、异常场景）
+
+**测试结果**：
+- 测试总数：1144（新增15个）
+- 通过率：100%
+- 执行时间：4.26秒
+
+### Added - 测试报告
+
+- 新增 [Test_Report_v1.4.3.md](docs/Test_Report_v1.4.3.md) 详尽测试报告
+- 验证 JVM Memory System 55个测试全通过
+- 验证 GAN Adversarial Review 94个测试全通过
+- 验证 Hooks Enforcement 8个测试全通过
+- 验证 Workflow System 100+个测试全通过
+
 ## [1.4.3] - 2026-04-11
 
 ### Added - Architecture Integration（架构集成完成）
