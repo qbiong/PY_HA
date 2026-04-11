@@ -360,6 +360,7 @@ class PatternExtractor:
 
         # 生成模式定义
         pattern = ExtractedPattern(
+            pattern_id=self._generate_pattern_id(),
             name=self._generate_pattern_name(features, task_type),
             pattern_type=pattern_type,
             description=self._generate_description(features),
@@ -427,7 +428,7 @@ class PatternExtractor:
 
     def _determine_skill_type(self, pattern_type: PatternType) -> str:
         """确定技能类型"""
-        discriminator_types = [PatternType.TESTING, PatternType.SECURITY]
+        discriminator_types = [PatternType.TESTING, PatternType.SECURITY, PatternType.ERROR_HANDLING]
         if pattern_type in discriminator_types:
             return "discriminator"
         return "generator"

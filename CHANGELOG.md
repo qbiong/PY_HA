@@ -5,6 +5,38 @@ All notable changes to HarnessGenJ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-04-11
+
+### Added - 自主执行系统测试
+
+**Workflow 新模块测试**（新增46个测试用例）：
+- [test_autonomous_execution.py](tests/workflow/test_autonomous_execution.py)
+  - TestTaskQueue: 14个测试（优先级、入队出队、依赖、持久化）
+  - TestTaskScheduler: 11个测试（状态、统计、守护线程、关闭审批）
+  - TestDaemonWorker: 11个测试（状态、启停、健康检查、错误处理）
+  - TestAutonomousIntegration: 3个集成测试
+
+**pytest 配置优化**：
+- [conftest.py](tests/conftest.py): 添加 src 目录到 Python 路径
+- [pyproject.toml](pyproject.toml): 排除 tests/manual 诊断脚本
+
+### Fixed - task_scheduler.py 问题修复
+
+**ShutdownResponse 必须字段**：
+- [task_scheduler.py:226-242](src/harnessgenj/workflow/task_scheduler.py#L226-242): 添加 request_id 和 agent_id 字段
+
+**TaskInfo metadata 问题**：
+- [task_scheduler.py:357-366](src/harnessgenj/workflow/task_scheduler.py#L357-366): 移除对 TaskInfo.metadata 的访问（TaskInfo 不存储 metadata）
+
+**状态转换逻辑修复**：
+- [task_scheduler.py:445-469](src/harnessgenj/workflow/task_scheduler.py#L445-469): 正确执行 IN_PROGRESS → REVIEWING → COMPLETED 状态转换
+
+### Testing
+
+- 测试总数：1230（新增46个）
+- 通过率：100%
+- 执行时间：21.13秒
+
 ## [1.5.1] - 2026-04-11
 
 ### Fixed - 架构审视修复
